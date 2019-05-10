@@ -105,9 +105,6 @@ class SegmentBranch(nn.Sequential):
         self.add_module("hidden layer", nn.Linear(f, hidden_layer_len_seg))
         self.add_module("output", torch.sigmoid(nn.Linear(f, 1))) #No rounding during training
 
-    def round(self, x):
-        return (x >= 0.5 and x <= 1.0)
-
 class ClassifyBranch(nn.Sequential):
     def __init__(self, in_len, hidden_layer_len_cls, num_classes): #in_len = sum(k*f) across all layers of the pyramid. k = nxn, f = # of filters of feature maps pooled from.
         self.add_module("input layer to hidden", nn.Linear(in_len, hidden_layer_len_cls))
@@ -160,6 +157,7 @@ class DensePBR(nn.Module):
         self.classify = ClassifyBranch(self.sum, hidden_layer_len_cls, num_classes)
 
         self.l = n_layers
+        self.f = f #Make it so we don't have to specify filter length, should be out[i].size() or something like that
         self.pools = []
 
         for i in self.l:
@@ -171,10 +169,13 @@ class DensePBR(nn.Module):
         #classify branch
         cls_in = []
         for pool in self.pools:
-            cls_in.append(*pool(out)) #change dimension to vertical
+            cls_in.extend(pool(out).resize_(self.l[self.pools.index(i)]*self.f)) #change dimension to vertical
         self.classify(torch.tensor(cls_in)) #classification output
 
         #segment branch
-        self.segment(out)
+        self.round(self.segment(out))
 
         #Don't know what to return since we have two branches
+
+    def round(self, x):
+        return (x >= 0.5 and x <= 1.0)
