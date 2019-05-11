@@ -4,9 +4,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 
-#path = 'C:/Users/Osvald/DenseNet-MNIST/data'
-#testImages, testLabels = load.loadTest(path) # shapes (10000,28,28) and (10000,)
-#trainImages, trainLabels = load.loadTrain(path) # shapes (60000,28,28) and (60000,)
 
 class BottleneckBlock(nn.Module):
     '''

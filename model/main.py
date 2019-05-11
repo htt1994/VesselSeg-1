@@ -99,7 +99,7 @@ if __name__ == '__main__':
                    ])),
                    batch_size=args.test_batch_size, shuffle=True, **kwargs)
 
-    epochs=1000
+    epochs=100
     workers = 1
     ngpu = 0
     img_w = 28
