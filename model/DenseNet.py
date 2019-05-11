@@ -170,12 +170,12 @@ class DensePBR(nn.Module):
         cls_in = []
         for pool in self.pools:
             cls_in.extend(pool(out).resize_(self.l[self.pools.index(i)]*self.f)) #change dimension to vertical
-        self.classify(torch.tensor(cls_in)) #classification output
+        cls_out = self.classify(torch.tensor(cls_in)) #classification output
 
         #segment branch
-        self.round(self.segment(out))
+        seg_out = self.segment(out) #can apply self.round() here to get bit mask mapping. Right now, we have essentially a probability distribution.
 
-        #Don't know what to return since we have two branches
+        return seg_out, cls_out
 
     def round(self, x):
         return (x >= 0.5 and x <= 1.0)
