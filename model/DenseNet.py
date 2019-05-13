@@ -97,7 +97,7 @@ class SPP(nn.Sequential):
         return int(x) + (x>int(x))
 
 class SegmentBranch(nn.Sequential):
-    def __init__(self, f, hidden_layer_len_seg):
+    def __init__(self, f, hidden_limayer_len_seg):
         self.add_module("conv1x1", nn.Conv2d(f, 1, kernel_size=1, stride=1))
         self.add_module("hidden layer", nn.Linear(f, hidden_layer_len_seg))
         self.add_module("output", torch.sigmoid(nn.Linear(f, 1))) #No rounding during training
@@ -108,6 +108,7 @@ class ClassifyBranch(nn.Sequential):
         self.add_module("hidden to output", torch.softmax(nn.Linear(hidden_layer_len_cls, num_classes)))
 
 class DenseNet(nn.Module):
+    ''
     def __init__(self, layers=[4,4], growth_rate=8, reduction=0.5, dropRate=0.0):
         super(DenseNet, self).__init__()
         self.in_planes = 2 * growth_rate
@@ -143,13 +144,30 @@ class DenseNet(nn.Module):
         return out
 
 class DensePBR(nn.Module):
-    def __init__(self, f=512, hidden_layer_len_cls=144, hidden_layer_len_seg=64, num_classes=2, n_layers=[1,4,16]):
+    '''
+    Complete architecture of the framework we have proposed.
+    DenseNet used for extracting feature maps.
+    Feature maps are passed in parallel to a segmentation branch and classification branch:
+
+    - Segmentation branch runs through 1x1 convolutions to binary classify each pixel as object of interest or not. May extend to having multiple filters to
+    create multiple feature maps, each having a binary segmentation pixelwise encoding for a corresponding class. Sigmoid applied during training.
+
+    - Classification branch is a sequence of spatial pyramid pooling, yields fixed output size which is passed into FCs for disease classification.
+
+    TODO:
+        1. Dynamically adjust f, don't explicitly define it.
+        2. Custom loss function. Ltot = Lseg + alpha*Lcls :
+            Lseg = pixelwise binary cross entropy loss,
+            Lcls = Negative log loss.
+        3. Optimize for multi-gpu training.
+    '''
+    def __init__(self, denseNetLayers=[4,4], f=512, hidden_layer_len_cls=144, hidden_layer_len_seg=64, num_classes=2, n_layers=[1,4,16]):
         super(DensePBR, self).__init__()
         self.sum = 0
         self.a = 64 #Final width of feature map
         self.b = 64 #Final length of feature map, change code so it adjusts dynamically
 
-        self.convolute = DenseNet()
+        self.convolute = DenseNet(layers=denseNetLayers)
         self.segment = SegmentBranch(f, hidden_layer_len_seg)
         self.classify = ClassifyBranch(self.sum, hidden_layer_len_cls, num_classes)
 
@@ -166,7 +184,7 @@ class DensePBR(nn.Module):
         #classify branch
         cls_in = []
         for pool in self.pools:
-            cls_in.extend(pool(out).resize_(self.l[self.pools.index(i)]*self.f)) #change dimension to vertical
+            cls_in.extend(pool(out).resize_(self.l[self.pools.index(i)]*self.f), 1) #change dimension to vertical
         cls_out = self.classify(torch.tensor(cls_in)) #classification output
 
         #segment branch
@@ -175,4 +193,4 @@ class DensePBR(nn.Module):
         return seg_out, cls_out
 
     def round(self, x):
-        return (x >= 0.5 and x <= 1.0)
+        return int(x) + (x >= 0.5 and x <= 1.0)
