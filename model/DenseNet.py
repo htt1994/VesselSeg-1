@@ -172,7 +172,6 @@ class DensePBR(nn.Module):
         2. Custom loss function. Ltot = Lseg + alpha*Lcls :
             Lseg = pixelwise binary cross entropy loss,
             Lcls = Negative log loss.
-        3. Optimize for multi-gpu training.
     '''
     def __init__(self, denseNetLayers=[4,4], f=512, hidden_layer_len_cls=144, hidden_layer_len_seg=64, num_classes=2, n_layers=[1,2,4]):
         super(DensePBR, self).__init__()
