@@ -168,55 +168,55 @@ class DensePBR(nn.Module):
     - Classification branch is a sequence of spatial pyramid pooling, yields fixed output size which is passed into FCs for disease classification.
 
     '''
-    def __init__(self, denseNetLayers=[4,4], classify=True, hidden_cls=144, num_classes=2, spp_layers=[1,2,4],
-                 segment=True, hidden_seg=64, prob_out=True):
+    def __init__(self, denseNetLayers=[4,4], hidden_cls=144, hidden_seg=64, num_classes=2, spp_layers=[1,2,4], segment=True, classify = True):
         super(DensePBR, self).__init__()
         self.seg = segment
-        self.clas = classify
+        self.cls = classify
         self.pools = []
         self.pool_init = False
+        self.map_dims = (0,0)
+        self.prob_out = True
 
         # DenseNet
         self.conv = DenseNet(layers=denseNetLayers)
-        self.channels = self.conv.channels # inherit channel dim from DenseNet class
-        # Segment Branch
-        if self.seg:
-            self.segment = SegmentBranch(f=self.channels, hidden_seg=hidden_seg)
-        # Classification Branch
-        if self.clas:
-            self.spp_layers = spp_layers
-            '''
-            for i in self.l: #remove??
-                pools.append(SPP(self.map_dims[0], self.map_dims[1], i))
-            '''
-            self.bins = sum((n**2) * self.channels for n in spp_layers) # total pooling bins * number of channels in final ConvBlock
-            self.classify = ClassifyBranch(in_channels=self.bins, hidden_cls=hidden_cls, num_classes=num_classes)
+        self.channels = self.conv.channels # retrieve channel dim from DenseNet class
 
-    def SPP_create(self, ConvBlock):
-        dims = ConvBlock.shape # (batch, y, x, RGB) TODO: double check these dims
+        # Segment Branch
+        self.segment = SegmentBranch(f=self.channels, hidden_seg=hidden_seg)
+
+        # Classification Branch
+        self.spp_layers = spp_layers
+        self.bins = sum((n**2) * self.channels for n in spp_layers) # total pooling bins * number of channels in final ConvBlock
+        self.classify = ClassifyBranch(in_channels=self.bins, hidden_cls=hidden_cls, num_classes=num_classes)
+
+    def SPP_init(self, convBlock):
+        self.pool_init = True
+        self.map_dims = convBlock.shape # (batch, C, y, x)
         for i in self.spp_layers:
-            self.pools.append(SPP(dims[1], dims[2], i))
+            self.pools = []
+            self.pools.append(SPP(self.map_dims[2], self.map_dims[3], i))
 
     def forward(self, input):
         out = self.conv(input)
 
+        seg_out = None
+        cls_out = None
+
         # Classification Branch
-        if self.clas:
-            self.SPP_create(out) # creates SPP layers based on specific image dims
+        if self.cls:
+            if pool_init == False or (out.shape[2], out.shape[3])!=self.map_dims:
+                self.SPP_init(out) # creates SPP layers based on specific image dims
             cls_in = []
             for pool in self.pools: # n*n dimensions
                 cls_in.extend(pool(out).view(-1)) # flatten for input into FC layer
             cls_out = self.classify(torch.tensor(cls_in).resize_(len(cls_in), 1)) #classification output, resize for vertical.
 
         # Segment Branch
-        if self.seg
-            seg_out = self.segment(out) #can apply self.round() here to get bit mask mapping
-            if not self.prob_out:
-                seg_out = torch.round(seg_out)
+        if self.seg:
+            seg_out = self.segment(out) if self.prob_out else torch.round(self.segment(out))
 
-        if self.seg and self.clas:
-            return seg_out, cls_out
-        elif self.seg:
-            return seg_out
-        else:
-            return cls_out
+        return seg_out, cls_out
+
+    def toggleProbOut(self):
+        self.prob_out = not self.prob_out
+        print("Outputting segmentation pixelwise probability" if self.prob_out else "Outputting segmentation binary mask")

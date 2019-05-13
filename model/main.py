@@ -19,16 +19,18 @@ import DenseNet_Util as densenet
 l = nn.NLLLoss()
 
 def smoothL1(x):
-    return (abs(x)<1)*0.5*x**2 + (abs(x)>=1)(abs(x)-0.5)
+    return (abs(x)<1).float()*0.5*x.float()**2 + (abs(x)>=1).float()*(abs(x).float()-0.5)
 
 def L_tot(p_set, t_set, lambda):
     '''
     Custom loss function, L_tot = 1/Ncls * sum(Lcls(p_i, p*_i)) + lambda * 1/Nreg * sum(p*_i*Lreg(t_i, t*_i))
-    p_set is set of segmentation masking predicted, p_i is R(a*b) ~ [0, 1], and respective ground truth, p*_i is R(a*b) ~ {0, 1} for each pixel.
+    Where i is the index of the anchor, i ~ {0, 1, ..., N_anchors-1}
+
+    p_set is set of segmentation masking predicted, p_i is R(a*b) ~ [0, 1], and respective ground truth, p*_i is R(a*b) ~ {0, 1} for each anchor.
     t_set is set of vectors of dim(t_set(i)) = 8, normalized coordinates of proposal bbox.
         - t_i is predicted, t*_i is ground truth (generated from segmentation mask)
 
-    Ncls = minibatch bn_size
+    Ncls = minibatch size
     Nreg = # of anchor locations
 
     Lcls = Binary cross entropy loss
@@ -38,9 +40,11 @@ def L_tot(p_set, t_set, lambda):
                         abs(x)-0.5 | otherwise}
 
     TODO:
-        1. Implement with batch training compatibility.
+        1. Implement with batch training compatibility: NOTE: This should already be batch training compatibile.
     '''
-    return 0
+    Lcls = nn.BCELoss() #seems to be already normalized over Ncls
+
+    return Lcls + lambda #*Others...
 
 
 def train(args, model, device, train_loader, optimizer, epoch):
