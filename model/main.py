@@ -18,6 +18,31 @@ import DenseNet_Util as densenet
 
 l = nn.NLLLoss()
 
+def smoothL1(x):
+    return (abs(x)<1)*0.5*x**2 + (abs(x)>=1)(abs(x)-0.5)
+
+def L_tot(p_set, t_set, lambda):
+    '''
+    Custom loss function, L_tot = 1/Ncls * sum(Lcls(p_i, p*_i)) + lambda * 1/Nreg * sum(p*_i*Lreg(t_i, t*_i))
+    p_set is set of segmentation masking predicted, p_i is R(a*b) ~ [0, 1], and respective ground truth, p*_i is R(a*b) ~ {0, 1} for each pixel.
+    t_set is set of vectors of dim(t_set(i)) = 8, normalized coordinates of proposal bbox.
+        - t_i is predicted, t*_i is ground truth (generated from segmentation mask)
+
+    Ncls = minibatch bn_size
+    Nreg = # of anchor locations
+
+    Lcls = Binary cross entropy loss
+
+    Lreg(t_i, t*_i) = Smooth_L1(t_i - t*_i)
+        Smooth_L1(x) = {0.5x^2     | abs(x) < 1;
+                        abs(x)-0.5 | otherwise}
+
+    TODO:
+        1. Implement with batch training compatibility.
+    '''
+    return 0
+
+
 def train(args, model, device, train_loader, optimizer, epoch):
     global l
     model.train()
