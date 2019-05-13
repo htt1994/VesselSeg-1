@@ -174,7 +174,7 @@ class DensePBR(nn.Module):
         self.cls = classify
         self.pools = []
         self.pool_init = False
-        self.map_dims = (0,0)
+        self.map_dims = (0,0) #y,x
         self.prob_out = True
 
         # DenseNet

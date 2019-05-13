@@ -18,6 +18,7 @@ import DenseNet as densenet
 '''
 TODO:
     1. Finish up L_tot()
+    2. Optimize code/loss function for minibatch training.
 '''
 
 l = nn.NLLLoss()
