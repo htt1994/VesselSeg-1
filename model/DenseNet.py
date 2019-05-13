@@ -8,24 +8,24 @@ import math
 class BottleneckBlock(nn.Module):
     '''
     Reduces model compexity by changing width (lxk) -> (k)
-    Takes args in_planes, out_planes - number of channels into and out of block
+    Takes args channels, out_channels - number of channels into and out of block
 
-    1x1 Conv transforms depth: in_planes -> inter_planes (4x output depth)
-    3x3 Conv transforms depth: inter_planes -> out_planes
+    1x1 Conv transforms depth: channels -> inter_channels (4x output depth)
+    3x3 Conv transforms depth: inter_channels -> out_channels
 
     After l layers, with growth rate k, this gives channel dims:
     (lxk) -> Bn,ReLU,Conv(1) -> (bn_sizexk) - > Bn,ReLU,Conv(3) -> (k)
     '''
-    def __init__(self, in_planes, out_planes, growth_rate, bn_size=4, dropRate=0.0):
+    def __init__(self, channels, out_channels, growth_rate, bn_size=4, dropRate=0.0):
         super(BottleneckBlock, self).__init__()
-        inter_planes = bn_size * growth_rate # number of intermediary channels in bottleneck
-        self.bn1 = nn.BatchNorm2d(in_planes)
+        inter_channels = bn_size * growth_rate # number of intermediary channels in bottleneck
+        self.bn1 = nn.BatchNorm2d(channels)
         self.relu = nn.ReLU(inplace=True)
-        self.conv1 = nn.Conv2d(in_planes, inter_planes,
+        self.conv1 = nn.Conv2d(channels, inter_channels,
                                kernel_size=1, stride=1,
                                padding=0, bias=False)
-        self.bn2 = nn.BatchNorm2d(inter_planes)
-        self.conv2 = nn.Conv2d(inter_planes, out_planes,
+        self.bn2 = nn.BatchNorm2d(inter_channels)
+        self.conv2 = nn.Conv2d(inter_channels, out_channels,
                                kernel_size=3, stride=1,
                                padding=1, bias=False)
         self.dropRate = dropRate
@@ -42,19 +42,19 @@ class BottleneckBlock(nn.Module):
 class TransitionBlock(nn.Module):
     '''
     Down-samples past states to match dims for concatenation
-    Takes args in_planes, out_planes - number of channels into and out of block
+    Takes args channels, out_channels - number of channels into and out of block
 
-    1x1 Conv transforms depth: in_planes -> out_planes
-    2x2 Avg_Pool preserves depth -> out_planes
+    1x1 Conv transforms depth: channels -> out_channels
+    2x2 Avg_Pool preserves depth -> out_channels
 
     After l layers, with growth rate k, this gives channel dims:
     (lxk) -> Bn,ReLU,Conv(1) -> (4xk) - > Bn,ReLU,Conv(3) -> (k)
     '''
-    def __init__(self, in_planes, out_planes, dropRate=0.0):
+    def __init__(self, channels, out_channels, dropRate=0.0):
         super(TransitionBlock, self).__init__()
-        self.bn1 = nn.BatchNorm2d(in_planes)
+        self.bn1 = nn.BatchNorm2d(channels)
         self.relu = nn.ReLU(inplace=True)
-        self.conv1 = nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=1,
+        self.conv1 = nn.Conv2d(channels, out_channels, kernel_size=1, stride=1,
                                padding=0, bias=False)
         self.dropRate = dropRate
 
@@ -76,12 +76,12 @@ class DenseBlock(nn.Sequential):
     After this block k new higher level feature channels will be added to the "cummulative knowledge"
     providing a total of (Lxk) feature channels at the L'th denseblock
     '''
-    def __init__(self, nb_layers, in_planes, growth_rate, bn_size=4, dropRate=0.0):
+    def __init__(self, nb_layers, channels, growth_rate, bn_size=4, dropRate=0.0):
         super(DenseBlock, self).__init__()
         for i in range(nb_layers):
             # Each layer, l, has input ko + k(l-1) channels and outputs k channels
-            layer = BottleneckBlock(in_planes = int(in_planes + i*growth_rate),
-                                          out_planes = int(growth_rate),
+            layer = BottleneckBlock(channels = int(channels + i*growth_rate),
+                                          out_channels = int(growth_rate),
                                           growth_rate=growth_rate,
                                           bn_size=bn_size,
                                           dropRate=float(dropRate))
@@ -92,7 +92,7 @@ class SPP(nn.Sequential):
     An SPP level class. Have multiple objects of these to create an SPP pyramid.
     a = width
     b = height
-    n = side size of pyramid layer. n*n is number of bins for one feature map of layer n.
+    n = side size of post-pool layer. n*n is number of bins for one feature map of layer n.
     '''
     def __init__(self, a, b, n):
         window = (self.ceiling(a/n), self.ceiling(b/n))
@@ -105,20 +105,21 @@ class SPP(nn.Sequential):
 class SegmentBranch(nn.Sequential):
     '''
     Segmentation FCN
-    For pixel x_f(i,j) on each feature map, where f is feature map number, are inputs to FC with a hidden layer, and one output node.
+    For pixel x_f(i,j) on each feature map, where f is feature map number
+     are inputs to FCN with a hidden layer and one output node.
     '''
-    def __init__(self, f, hidden_layer_len_seg):
-        self.add_module("conv1x1", nn.Conv2d(f, hidden_layer_len_seg, kernel_size=1, stride=1))
-        self.add_module("conv1x1_hidden", torch.sigmoid(nn.Conv2d(hidden_layer_len_seg, 1, kernel_size=1, stride=1))) #apply sigmoid during training.
+    def __init__(self, f, hidden_seg):
+        self.add_module("conv1x1", nn.Conv2d(f, hidden_seg, kernel_size=1, stride=1))
+        self.add_module("conv1x1_hidden", torch.sigmoid(nn.Conv2d(hidden_seg, 1, kernel_size=1, stride=1))) #apply sigmoid during training.
 
 class ClassifyBranch(nn.Sequential):
     '''
     Classification branch that follows the SPP. SPP vector is input to this branch.
-    in_len = sum(k*f) across all layers of the pyramid. k = nxn, f = # of filters of feature maps pooled from.
+    in_channels = sum(k*f) across all layers of the final conv block. k = nxn, f = # of filters of feature maps pooled from.
     '''
-    def __init__(self, in_len, hidden_layer_len_cls, num_classes):
-        self.add_module("input layer to hidden", nn.Linear(in_len, hidden_layer_len_cls))
-        self.add_module("hidden to output", torch.softmax(nn.Linear(hidden_layer_len_cls, num_classes)))
+    def __init__(self, in_channels, hidden_cls, num_classes):
+        self.add_module("input layer to hidden", nn.Linear(in_channels, hidden_cls))
+        self.add_module("hidden to output", torch.softmax(nn.Linear(hidden_cls, num_classes)))
 
 class DenseNet(nn.Sequential):
     '''
@@ -126,24 +127,24 @@ class DenseNet(nn.Sequential):
     '''
     def __init__(self, layers=[4,4], growth_rate=8, reduction=0.5, dropRate=0.0):
         super(DenseNet, self).__init__()
-        self.in_planes = 2 * growth_rate
+        self.channels = 2 * growth_rate # first conv gives 2k channels
         self.n = layers
         # input Conv
-        self.add_module("Conv 1", nn.Conv2d(1, self.in_planes, kernel_size=3, stride=2, padding=1, bias=False))
+        self.add_module("Conv 1", nn.Conv2d(1, self.channels, kernel_size=3, stride=2, padding=1, bias=False))
 
         for i in range(len(self.n)):
             if i < (len(self.n)-1):
-                self.add_module("Block " + str(i+1), DenseBlock(self.n[i], self.in_planes, growth_rate=growth_rate, dropRate=dropRate))
-                self.in_planes = int(self.in_planes*self.n[i]*growth_rate)
+                self.add_module("Block " + str(i+1), DenseBlock(self.n[i], self.channels, growth_rate=growth_rate, dropRate=dropRate))
+                self.channels = int(self.channels*self.n[i]*growth_rate)
 
                 #Transition
-                self.add_module("Transition " + str(i+1), TransitionBlock.forward(self.in_planes, int(math.floor(self.in_planes*reduction)),
+                self.add_module("Transition " + str(i+1), TransitionBlock.forward(self.channels, int(math.floor(self.channels*reduction)),
                                 dropRate=dropRate))
-                self.in_planes = int(math.floor(self.in_planes*reduction))
+                self.channels = int(math.floor(self.channels*reduction))
 
             else:
-                self.add_module("Block " + str(i+1), DenseBlock(self.n[i], self.in_planes, growth_rate=growth_rate, dropRate=dropRate))
-                self.in_planes = int(self.in_planes+self.n[i]*growth_rate)
+                self.add_module("Block " + str(i+1), DenseBlock(self.n[i], self.channels, growth_rate=growth_rate, dropRate=dropRate))
+                self.channels = int(self.channels+self.n[i]*growth_rate)
 
         #initialization
         for m in self.modules():
@@ -166,89 +167,56 @@ class DensePBR(nn.Module):
 
     - Classification branch is a sequence of spatial pyramid pooling, yields fixed output size which is passed into FCs for disease classification.
 
-    TODO:
-        1. Dynamically adjust f and self.map_dims, don't explicitly define it.
-            - hidden_layer_len_seg should depend on f, could be (2/3)*f.
-        2. Custom loss function. Ltot = Lseg + alpha*Lcls :
-            Lseg = pixelwise binary cross entropy loss,
-            Lcls = Negative log loss.
     '''
-    def __init__(self, denseNetLayers=[4,4], f=512, hidden_layer_len_cls=144, hidden_layer_len_seg=64, num_classes=2, n_layers=[1,2,4]):
+    def __init__(self, denseNetLayers=[4,4], classify=True, hidden_cls=144, num_classes=2, spp_layers=[1,2,4],
+                 segment=True, hidden_seg=64, prob_out=True):
         super(DensePBR, self).__init__()
-        self.f = f #Make it so we don't have to specify filter length, should be out[i].size() or something like that
-        self.l = n_layers
+        self.seg = segment
+        self.clas = classify
         self.pools = []
-        self.sum = sum(i*i*self.f for i in self.l)
+        self.pool_init = False
 
-        self.map_dims = (64, 64) ''' !!! dimensions of feature map = dimension of img (???, I don't think so...) '''
+        # DenseNet
+        self.conv = DenseNet(layers=denseNetLayers)
+        self.channels = self.conv.channels # inherit channel dim from DenseNet class
+        # Segment Branch
+        if self.seg:
+            self.segment = SegmentBranch(f=self.channels, hidden_seg=hidden_seg)
+        # Classification Branch
+        if self.clas:
+            self.spp_layers = spp_layers
+            '''
+            for i in self.l: #remove??
+                pools.append(SPP(self.map_dims[0], self.map_dims[1], i))
+            '''
+            self.bins = sum((n**2) * self.channels for n in spp_layers) # total pooling bins * number of channels in final ConvBlock
+            self.classify = ClassifyBranch(in_channels=self.bins, hidden_cls=hidden_cls, num_classes=num_classes)
 
-        self.convolute = DenseNet(layers=denseNetLayers)
-        self.segment = SegmentBranch(f=self.f, hidden_layer_len_seg=hidden_layer_len_seg)
-        self.classify = ClassifyBranch(in_len=self.sum, hidden_layer_len_cls=hidden_layer_len_cls, num_classes=num_classes)
-
-        for i in self.l:
-            pools.append(SPP(self.map_dims[0], self.map_dims[1], i))
+    def SPP_create(self, ConvBlock):
+        dims = ConvBlock.shape # (batch, y, x, RGB) TODO: double check these dims
+        for i in self.spp_layers:
+            self.pools.append(SPP(dims[1], dims[2], i))
 
     def forward(self, input):
-        out = self.convolute(input)
+        out = self.conv(input)
 
-        #classify branch
-        cls_in = []
-        for n, pool in enumerate(self.pools): #M = n*n = self.l(n)*self.l(n), dimensions
-            cls_in.extend(pool(out).view(-1)) #flatten to horizontal list so we can extend cls_in.
-        cls_out = self.classify(torch.tensor(cls_in).resize_(len(cls_in), 1)) #classification output, resize for vertical.
+        # Classification Branch
+        if self.clas:
+            self.SPP_create(out) # creates SPP layers based on specific image dims
+            cls_in = []
+            for pool in self.pools: # n*n dimensions
+                cls_in.extend(pool(out).view(-1)) # flatten for input into FC layer
+            cls_out = self.classify(torch.tensor(cls_in).resize_(len(cls_in), 1)) #classification output, resize for vertical.
 
-        #segment branch
-        seg_out = self.segment(out) #can apply self.round() here to get bit mask mapping. Right now, we have essentially a probability distribution.
+        # Segment Branch
+        if self.seg
+            seg_out = self.segment(out) #can apply self.round() here to get bit mask mapping
+            if not self.prob_out:
+                seg_out = torch.round(seg_out)
 
-        return seg_out, cls_out
-
-    def round(self, x):
-        return int(x) + (x >= 0.5 and x <= 1.0)
-
-
-'''
-Old Code Storage Room:
-
-
-class DenseNet(nn.Module):
-
-    #Vanilla DenseNet backbone.
-    #TODO:
-    #1. Generalize, make it a nn.Sequential and loop through each layer rather than hardcoding it.
-
-    def __init__(self, layers=[4,4], growth_rate=8, reduction=0.5, dropRate=0.0):
-        super(DenseNet, self).__init__()
-        self.in_planes = 2 * growth_rate
-        self.n = layers
-        # input Conv
-        self.conv1 = nn.Conv2d(1, self.in_planes, kernel_size=3, stride=2,
-                               padding=1, bias=False)
-
-
-        # 1st block
-        self.block1 = DenseBlock(self.n[0], self.in_planes, growth_rate, dropRate=dropRate)
-        self.in_planes = int(self.in_planes+self.n[0]*growth_rate)
-        #transition
-        self.trans1 = TransitionBlock(self.in_planes, int(math.floor(self.in_planes*reduction)), dropRate=dropRate)
-        self.in_planes = int(math.floor(self.in_planes*reduction))
-        # 2nd block
-        self.block2 = DenseBlock(self.n[1], self.in_planes, growth_rate, dropRate=dropRate)
-        self.in_planes = int(self.in_planes+self.n[1]*growth_rate)
-
-        #initialization
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight)
-            elif isinstance(m, nn.BatchNorm2d):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
-            elif isinstance(m, nn.Linear):
-                nn.init.constant_(m.bias, 0)
-
-    def forward(self, x):
-        out = self.conv1(x)
-        out = self.trans1(self.block1(out))
-        out = self.block2(out)
-        return out
-'''
+        if self.seg and self.clas:
+            return seg_out, cls_out
+        elif self.seg:
+            return seg_out
+        else:
+            return cls_out
