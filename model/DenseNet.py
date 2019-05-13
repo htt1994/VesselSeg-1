@@ -191,7 +191,7 @@ class DensePBR(nn.Module):
 
     def SPP_init(self, convBlock):
         self.pool_init = True
-        self.map_dims = convBlock.shape # (batch, C, y, x)
+        self.map_dims = (convBlock.shape[2], convBlock.shape[3]) # (batch, C, y, x)
         for i in self.spp_layers:
             self.pools = []
             self.pools.append(SPP(self.map_dims[2], self.map_dims[3], i))
