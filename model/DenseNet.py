@@ -125,30 +125,31 @@ class ClassifyBranch(nn.Sequential):
         self.add_module("input layer to hidden", nn.Linear(in_len, hidden_layer_len_cls))
         self.add_module("hidden to output", torch.softmax(nn.Linear(hidden_layer_len_cls, num_classes)))
 
-class DenseNet(nn.Module):
+class DenseNet(nn.Sequential):
     '''
-    Vanilla DenseNet backbone.
-
-    TODO:
-    1. Generalize, make it a nn.Sequential and loop through each layer rather than hardcoding it.
+    Vanilla DenseNet backbone as nn.Sequential.
     '''
     def __init__(self, layers=[4,4], growth_rate=8, reduction=0.5, dropRate=0.0):
         super(DenseNet, self).__init__()
         self.in_planes = 2 * growth_rate
         self.n = layers
         # input Conv
-        self.conv1 = nn.Conv2d(1, self.in_planes, kernel_size=3, stride=2,
-                               padding=1, bias=False)
+        self.add_module("Conv 1", nn.Conv2d(1, self.in_planes, kernel_size=3, stride=2,
+                               padding=1, bias=False))
 
-        # 1st block
-        self.block1 = DenseBlock(self.n[0], self.in_planes, growth_rate, dropRate=dropRate)
-        self.in_planes = int(self.in_planes+self.n[0]*growth_rate)
-        #transition
-        self.trans1 = TransitionBlock(self.in_planes, int(math.floor(self.in_planes*reduction)), dropRate=dropRate)
-        self.in_planes = int(math.floor(self.in_planes*reduction))
-        # 2nd block
-        self.block2 = DenseBlock(self.n[1], self.in_planes, growth_rate, dropRate=dropRate)
-        self.in_planes = int(self.in_planes+self.n[1]*growth_rate)
+        for i in range(len(layers)):
+            if i < (len(layers)-1):
+                self.add_module("Block " + str(i+1), DenseBlock(self.n[i], self.in_planes, growth_rate=growth_rate, dropRate=dropRate))
+                self.in_planes = int(self.in_planes*self.n[i]*growth_rate)
+
+                #Transition
+                self.add_module("Transition " + str(i+1), TransitionBlock.forward(self.in_planes, int(math.floor(self.in_planes*reduction)),
+                                dropRate=dropRate))
+                self.in_planes = int(math.floor(self.in_planes*reduction))
+
+            else:
+                self.add_module("Block " + str(i+1), DenseBlock(self.n[i], self.in_planes, growth_rate=growth_rate, dropRate=dropRate))
+                self.in_planes = int(self.in_planes+self.n[i]*growth_rate)
 
         #initialization
         for m in self.modules():
@@ -159,12 +160,6 @@ class DenseNet(nn.Module):
                 nn.init.constant_(m.bias, 0)
             elif isinstance(m, nn.Linear):
                 nn.init.constant_(m.bias, 0)
-
-    def forward(self, x):
-        out = self.conv1(x)
-        out = self.trans1(self.block1(out))
-        out = self.block2(out)
-        return out
 
 class DensePBR(nn.Module):
     '''
@@ -202,7 +197,7 @@ class DensePBR(nn.Module):
             pools.append(SPP(self.a, self.b, i, f))
 
     def forward(self, input):
-        out = self.convolute.forward(input)
+        out = self.convolute(input)
 
         #classify branch
         cls_in = []
@@ -217,3 +212,50 @@ class DensePBR(nn.Module):
 
     def round(self, x):
         return int(x) + (x >= 0.5 and x <= 1.0)
+
+
+'''
+Old Code Storage Room:
+
+
+class DenseNet(nn.Module):
+
+    #Vanilla DenseNet backbone.
+    #TODO:
+    #1. Generalize, make it a nn.Sequential and loop through each layer rather than hardcoding it.
+
+    def __init__(self, layers=[4,4], growth_rate=8, reduction=0.5, dropRate=0.0):
+        super(DenseNet, self).__init__()
+        self.in_planes = 2 * growth_rate
+        self.n = layers
+        # input Conv
+        self.conv1 = nn.Conv2d(1, self.in_planes, kernel_size=3, stride=2,
+                               padding=1, bias=False)
+
+
+        # 1st block
+        self.block1 = DenseBlock(self.n[0], self.in_planes, growth_rate, dropRate=dropRate)
+        self.in_planes = int(self.in_planes+self.n[0]*growth_rate)
+        #transition
+        self.trans1 = TransitionBlock(self.in_planes, int(math.floor(self.in_planes*reduction)), dropRate=dropRate)
+        self.in_planes = int(math.floor(self.in_planes*reduction))
+        # 2nd block
+        self.block2 = DenseBlock(self.n[1], self.in_planes, growth_rate, dropRate=dropRate)
+        self.in_planes = int(self.in_planes+self.n[1]*growth_rate)
+
+        #initialization
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight)
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                nn.init.constant_(m.bias, 0)
+
+    def forward(self, x):
+        out = self.conv1(x)
+        out = self.trans1(self.block1(out))
+        out = self.block2(out)
+        return out
+'''
