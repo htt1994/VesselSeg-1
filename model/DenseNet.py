@@ -107,14 +107,10 @@ class SegmentBranch(nn.Sequential):
     '''
     Segmentation FCN
     For pixel x_f(i,j) on each feature map, where f is feature map number, are inputs to FC with a hidden layer, and one output node.
-
-    TODO:
-    1. Implement this correctly. It's currently implemented wrong.
     '''
-    def __init__(self, f, hidden_limayer_len_seg):
-        self.add_module("conv1x1", nn.Conv2d(f, 1, kernel_size=1, stride=1))
-        self.add_module("hidden layer", nn.Linear(f, hidden_layer_len_seg))
-        self.add_module("output", torch.sigmoid(nn.Linear(hidden_layer_len_seg, 1))) #No rounding during training
+    def __init__(self, f, hidden_layer_len_seg):
+        self.add_module("conv1x1", nn.Conv2d(f, hidden_layer_len_seg, kernel_size=1, stride=1))
+        self.add_module("conv1x1_hidden", torch.sigmoid(nn.Conv2d(hidden_layer_len_seg, 1, kernel_size=1, stride=1))) #apply sigmoid during training.
 
 class ClassifyBranch(nn.Sequential):
     '''
@@ -134,11 +130,10 @@ class DenseNet(nn.Sequential):
         self.in_planes = 2 * growth_rate
         self.n = layers
         # input Conv
-        self.add_module("Conv 1", nn.Conv2d(1, self.in_planes, kernel_size=3, stride=2,
-                               padding=1, bias=False))
+        self.add_module("Conv 1", nn.Conv2d(1, self.in_planes, kernel_size=3, stride=2, padding=1, bias=False))
 
-        for i in range(len(layers)):
-            if i < (len(layers)-1):
+        for i in range(len(self.n)):
+            if i < (len(self.n)-1):
                 self.add_module("Block " + str(i+1), DenseBlock(self.n[i], self.in_planes, growth_rate=growth_rate, dropRate=dropRate))
                 self.in_planes = int(self.in_planes*self.n[i]*growth_rate)
 
