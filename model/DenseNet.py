@@ -168,7 +168,7 @@ class DensePBR(nn.Module):
 
     TODO:
         1. Dynamically adjust f and self.map_dims, don't explicitly define it.
-            - hidden_layer_len_seg should depend on f.
+            - hidden_layer_len_seg should depend on f, could be (2/3)*f.
         2. Custom loss function. Ltot = Lseg + alpha*Lcls :
             Lseg = pixelwise binary cross entropy loss,
             Lcls = Negative log loss.
