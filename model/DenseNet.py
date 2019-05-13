@@ -88,7 +88,14 @@ class DenseBlock(nn.Sequential):
             self.add_module('denselayer%d' % (i + 1), layer)
 
 class SPP(nn.Sequential):
-    def __init__(self, a, b, n, f): #a=width, b=height, n=size of pyramid layer, f= # of filters in layer being pooled from
+    '''
+    An SPP level class. Have multiple objects of these to create an SPP pyramid.
+    a = width
+    b = height
+    n = side size of pyramid layer. nxn = 4x4 in filtered layer for example.
+    f = # of filters in layer being pooled from.
+    '''
+    def __init__(self, a, b, n, f):
         window = (self.ceiling(a/n), self.ceiling(b/n))
         stride = (int(a/n), int(b/n))
         self.add_module('pooling, n = ' + str(n), nn.MaxPool2d(kernel_size=window, stride=stride))
@@ -97,18 +104,34 @@ class SPP(nn.Sequential):
         return int(x) + (x>int(x))
 
 class SegmentBranch(nn.Sequential):
+    '''
+    Segmentation FCN
+    For pixel x_f(i,j) on each feature map, where f is feature map number, are inputs to FC with a hidden layer, and one output node.
+
+    TODO:
+    1. Implement this correctly. It's currently implemented wrong.
+    '''
     def __init__(self, f, hidden_limayer_len_seg):
         self.add_module("conv1x1", nn.Conv2d(f, 1, kernel_size=1, stride=1))
         self.add_module("hidden layer", nn.Linear(f, hidden_layer_len_seg))
-        self.add_module("output", torch.sigmoid(nn.Linear(f, 1))) #No rounding during training
+        self.add_module("output", torch.sigmoid(nn.Linear(hidden_layer_len_seg, 1))) #No rounding during training
 
 class ClassifyBranch(nn.Sequential):
-    def __init__(self, in_len, hidden_layer_len_cls, num_classes): #in_len = sum(k*f) across all layers of the pyramid. k = nxn, f = # of filters of feature maps pooled from.
+    '''
+    Classification branch that follows the SPP. SPP vector is input to this branch.
+    in_len = sum(k*f) across all layers of the pyramid. k = nxn, f = # of filters of feature maps pooled from.
+    '''
+    def __init__(self, in_len, hidden_layer_len_cls, num_classes):
         self.add_module("input layer to hidden", nn.Linear(in_len, hidden_layer_len_cls))
         self.add_module("hidden to output", torch.softmax(nn.Linear(hidden_layer_len_cls, num_classes)))
 
 class DenseNet(nn.Module):
-    ''
+    '''
+    Vanilla DenseNet backbone.
+
+    TODO:
+    1. Generalize, make it a nn.Sequential and loop through each layer rather than hardcoding it.
+    '''
     def __init__(self, layers=[4,4], growth_rate=8, reduction=0.5, dropRate=0.0):
         super(DenseNet, self).__init__()
         self.in_planes = 2 * growth_rate
