@@ -167,7 +167,8 @@ class DensePBR(nn.Module):
     - Classification branch is a sequence of spatial pyramid pooling, yields fixed output size which is passed into FCs for disease classification.
 
     TODO:
-        1. Dynamically adjust f and (a, b), don't explicitly define it.
+        1. Dynamically adjust f and self.map_dims, don't explicitly define it.
+            - hidden_layer_len_seg should depend on f.
         2. Custom loss function. Ltot = Lseg + alpha*Lcls :
             Lseg = pixelwise binary cross entropy loss,
             Lcls = Negative log loss.
@@ -180,11 +181,11 @@ class DensePBR(nn.Module):
         self.pools = []
         self.sum = sum(i*i*self.f for i in self.l)
 
-        self.map_dims = (64, 64)  #dimensions of feature map = dimension of img
+        self.map_dims = (64, 64) ''' !!! dimensions of feature map = dimension of img (???, I don't think so...) '''
 
         self.convolute = DenseNet(layers=denseNetLayers)
-        self.segment = SegmentBranch(f, hidden_layer_len_seg)
-        self.classify = ClassifyBranch(self.sum, hidden_layer_len_cls, num_classes)
+        self.segment = SegmentBranch(f=self.f, hidden_layer_len_seg=hidden_layer_len_seg)
+        self.classify = ClassifyBranch(in_len=self.sum, hidden_layer_len_cls=hidden_layer_len_cls, num_classes=num_classes)
 
         for i in self.l:
             pools.append(SPP(self.map_dims[0], self.map_dims[1], i))
@@ -195,8 +196,7 @@ class DensePBR(nn.Module):
         #classify branch
         cls_in = []
         for n, pool in enumerate(self.pools): #M = n*n = self.l(n)*self.l(n), dimensions
-            p_out = pool(out)
-            cls_in.extend(p_out.resize_(self.l(n)*self.l(n)*self.f)) #change to horizontal list so we can extend cls_in.
+            cls_in.extend(pool(out).view(-1)) #flatten to horizontal list so we can extend cls_in.
         cls_out = self.classify(torch.tensor(cls_in).resize_(len(cls_in), 1)) #classification output, resize for vertical.
 
         #segment branch
