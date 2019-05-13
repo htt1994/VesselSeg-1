@@ -13,8 +13,12 @@ import torchvision.transforms as transforms
 import torchvision.utils as vutils
 import numpy as np
 
-#import MNIST_data_loader as dl
-import DenseNet_Util as densenet
+import DenseNet as densenet
+
+'''
+TODO:
+    1. Finish up L_tot()
+'''
 
 l = nn.NLLLoss()
 
