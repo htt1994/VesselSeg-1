@@ -62,7 +62,7 @@ class TransitionBlock(nn.Module):
         out = self.conv1(self.relu(self.bn1(x)))
         if self.dropRate > 0:
             out = F.dropout(out, p=self.dropRate, inplace=False, training=self.training)
-        return F.avg_pool2d(out, 2) # can change pooling type and window here
+        return F.avg_pool2d(out, stride=2) # can change pooling type and window here
 
 class DenseBlock(nn.Sequential):
     '''
@@ -92,10 +92,9 @@ class SPP(nn.Sequential):
     An SPP level class. Have multiple objects of these to create an SPP pyramid.
     a = width
     b = height
-    n = side size of pyramid layer. nxn = 4x4 in filtered layer for example.
-    f = # of filters in layer being pooled from.
+    n = side size of pyramid layer. n*n is number of bins for one feature map of layer n.
     '''
-    def __init__(self, a, b, n, f):
+    def __init__(self, a, b, n):
         window = (self.ceiling(a/n), self.ceiling(b/n))
         stride = (int(a/n), int(b/n))
         self.add_module('pooling, n = ' + str(n), nn.MaxPool2d(kernel_size=window, stride=stride))
@@ -168,37 +167,37 @@ class DensePBR(nn.Module):
     - Classification branch is a sequence of spatial pyramid pooling, yields fixed output size which is passed into FCs for disease classification.
 
     TODO:
-        1. Dynamically adjust f, don't explicitly define it.
+        1. Dynamically adjust f and (a, b), don't explicitly define it.
         2. Custom loss function. Ltot = Lseg + alpha*Lcls :
             Lseg = pixelwise binary cross entropy loss,
             Lcls = Negative log loss.
         3. Optimize for multi-gpu training.
     '''
-    def __init__(self, denseNetLayers=[4,4], f=512, hidden_layer_len_cls=144, hidden_layer_len_seg=64, num_classes=2, n_layers=[1,4,16]):
+    def __init__(self, denseNetLayers=[4,4], f=512, hidden_layer_len_cls=144, hidden_layer_len_seg=64, num_classes=2, n_layers=[1,2,4]):
         super(DensePBR, self).__init__()
-        self.sum = 0
-        self.a = 64 #Final width of feature map
-        self.b = 64 #Final length of feature map, change code so it adjusts dynamically
+        self.f = f #Make it so we don't have to specify filter length, should be out[i].size() or something like that
+        self.l = n_layers
+        self.pools = []
+        self.sum = sum(i*i*self.f for i in self.l)
+
+        self.map_dims = (64, 64)  #dimensions of feature map = dimension of img
 
         self.convolute = DenseNet(layers=denseNetLayers)
         self.segment = SegmentBranch(f, hidden_layer_len_seg)
         self.classify = ClassifyBranch(self.sum, hidden_layer_len_cls, num_classes)
 
-        self.l = n_layers
-        self.f = f #Make it so we don't have to specify filter length, should be out[i].size() or something like that
-        self.pools = []
-
         for i in self.l:
-            pools.append(SPP(self.a, self.b, i, f))
+            pools.append(SPP(self.map_dims[0], self.map_dims[1], i))
 
     def forward(self, input):
         out = self.convolute(input)
 
         #classify branch
         cls_in = []
-        for pool in self.pools:
-            cls_in.extend(pool(out).resize_(self.l[self.pools.index(i)]*self.f), 1) #change dimension to vertical
-        cls_out = self.classify(torch.tensor(cls_in)) #classification output
+        for n, pool in enumerate(self.pools): #M = n*n = self.l(n)*self.l(n), dimensions
+            p_out = pool(out)
+            cls_in.extend(p_out.resize_(self.l(n)*self.l(n)*self.f)) #change to horizontal list so we can extend cls_in.
+        cls_out = self.classify(torch.tensor(cls_in).resize_(len(cls_in), 1)) #classification output, resize for vertical.
 
         #segment branch
         seg_out = self.segment(out) #can apply self.round() here to get bit mask mapping. Right now, we have essentially a probability distribution.
