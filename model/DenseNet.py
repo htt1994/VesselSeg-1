@@ -124,6 +124,7 @@ class ClassifyBranch(nn.Sequential):
 class DenseNet(nn.Sequential):
     '''
     Vanilla DenseNet backbone as nn.Sequential.
+    
     '''
     def __init__(self, layers=[4,4], growth_rate=8, reduction=0.5, dropRate=0.0):
         super(DenseNet, self).__init__()
@@ -204,7 +205,7 @@ class DensePBR(nn.Module):
 
         # Classification Branch
         if self.cls:
-            if pool_init == False or (out.shape[2], out.shape[3])!=self.map_dims:
+            if pool_init == False or (out.shape[2], out.shape[3])!=self.map_dims: #If we haven't initialized the maxpooling pyramid yet, or the feature map changed shape.
                 self.SPP_init(out) # creates SPP layers based on specific image dims
             cls_in = []
             for pool in self.pools: # n*n dimensions

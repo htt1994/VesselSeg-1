@@ -13,7 +13,7 @@ import torchvision.transforms as transforms
 import torchvision.utils as vutils
 import numpy as np
 
-import DenseNet as densenet
+import densenet as dnet
 
 '''
 TODO:
@@ -139,7 +139,7 @@ if __name__ == '__main__':
     img_w = 28
     img_h = 28
 
-    model = densenet.DenseNet().to(device) #Change to: model = densenet.DensePBR().to(device)
+    model = dnet.DenseNet().to(device) #Change to: model = densenet.DensePBR().to(device)
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
 
     for epoch in range(1, args.epochs + 1):
