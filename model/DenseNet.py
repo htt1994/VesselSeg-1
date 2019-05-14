@@ -131,7 +131,7 @@ class DenseNet(nn.Sequential):
         self.n = layers
 
         # input transition
-        self.add_module("BN 1", nn.BatchNorm2d(3)) '''Should normalize the input across its batches?''' 
+        self.add_module("BN 1", nn.BatchNorm2d(3)) '''Should normalize the input across its batches?'''
         self.add_module("Conv 1", nn.Conv2d(3, self.channels, kernel_size=3, stride=2, padding=1, bias=False))
 
         for i in range(len(self.n)):

@@ -13,6 +13,7 @@ import torchvision.transforms as transforms
 import torchvision.utils as vutils
 import numpy as np
 
+import data_loader as dl
 import densenet as dnet
 
 '''
@@ -21,7 +22,7 @@ TODO:
     2. Optimize code/loss function for minibatch training.
 '''
 
-l = nn.NLLLoss()
+l = nn.BCELoss()
 
 def smoothL1(x):
     '''
@@ -74,49 +75,67 @@ def L_tot(p_set, p_ground, t_set, t_ground, cls_pred, cls_ground, phi, alpha, be
 
     return phi*Lseg + alpha*Lreg, + beta*Lcls
 
+def dice(pred, target):
+    return (torch.round(pred).long() & target).view(-1).sum().float()/(torch.round(pred).long().view(-1).sum()+target.view(-1).sum()).float()
 
 def train(args, model, device, train_loader, optimizer, epoch):
     global l
     model.train()
+    avg_dice = 0
+    batch_size = len(train_loader[0])
     for batch_idx, (data, target) in enumerate(train_loader):
-        data, target = data.to(device), target.to(device)
+        data, target = data.to(deviceg target.to(device)
         optimizer.zero_grad()
         output = model(data)
-        loss = l(output, target)
+        loss = l(output[0], target) #output[0] is segmentation prediction
+        avg_dice += dice(output[0], target)
         loss.backward()
         optimizer.step()
         if batch_idx % args.log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader), loss.item()))
+            print("Avg. dice coefficient: " + str(avg_dice/batch_size)))
 
 
 def test(args, model, device, test_loader):
     global l
     model.eval()
     test_loss = 0
-    correct = 0
+    avg_dice = 0
     with torch.no_grad():
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
             output = model(data)
-            test_loss += l(output, target).item() # sum up batch loss
-            pred = output.argmax(dim=1, keepdim=True) # get the index of the max log-probability
-            correct += pred.eq(target.view_as(pred)).sum().item()
+            test_loss += l(output[0], target).item() # sum up batch loss
+            avg_dice += dice(output[0], target)
 
-    test_loss /= len(test_loader.dataset)
+    print("Test loss is: " + str(test_loss) + " and the avg. dice coefficient is: " + str(avg_dice/len(test_loader)))
 
-    print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
-        test_loss, correct, len(test_loader.dataset),
-        100. * correct / len(test_loader.dataset)))
+#initialize the minibatch
+def minibatch_init(set, minibatch_size):
+    #randomize training set
+    shuffle_set = random.shuffle(list(zip(set[0], set[1])))
+    temp = zip(*random.shuffle(shuffle_set))
+    c = 0
+    set = []
+    minibatch = []
+    for i in len(temp[0]):
+        minibatch.append((temp[0][i], temp[1][i]))
+        c += 1
+        if not c%minibatch_size:
+            train_loader.append(minibatch)
+            minibatch = []
+    return set
 
+#Main function
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Retina Segmentation and Classification with DenseNet-Based Architecture')
-    parser.add_argument('--batch-size', type=int, default=64, metavar='N',
-                        help='input batch size for training (default: 64)')
-    parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
+    parser.add_argument('--batch-size', type=int, default=4, metavar='N',
+                        help='input batch size for training (default: 4)')
+    parser.add_argument('--test-batch-size', type=int, default=4, metavar='N',
                         help='input batch size for testing (default: 1000)')
-    parser.add_argument('--epochs', type=int, default=10, metavar='N',
+    parser.add_argument('--epochs', type=int, default=100, metavar='N',
                         help='number of epochs to train (default: 10)')
     parser.add_argument('--lr', type=float, default=0.01, metavar='LR',
                         help='learning rate (default: 0.01)')
@@ -126,10 +145,10 @@ if __name__ == '__main__':
                         help='disables CUDA training')
     parser.add_argument('--seed', type=int, default=1, metavar='S',
                         help='random seed (default: 1)')
-    parser.add_argument('--log-interval', type=int, default=10, metavar='N',
+    parser.add_argument('--log-interval', type=int, default=1, metavar='N',
                         help='how many batches to wait before logging training status')
 
-    parser.add_argument('--save-model', action='store_true', default=False,
+    parser.add_argument('--save-model', action='store_true', default=True,
                         help='For Saving the current Model')
 
     args = parser.parse_args()
@@ -141,33 +160,23 @@ if __name__ == '__main__':
 
     kwargs = {'num_workers': 1, 'pin_memory': True} if use_cuda else {}
 
-    train_loader = torch.utils.data.DataLoader(
-    dset.MNIST('../data', train=True, download=True,
-                   transform=transforms.Compose([
-                       transforms.ToTensor(),
-                       transforms.Normalize((0.1307,), (0.3081,))
-                   ])),
-                   batch_size=args.batch_size, shuffle=True, **kwargs)
+    train_loader = minibatch_init(dl.loadTrain(), batch-size)
+    test_loader = minibatch_init(dl.loadTest(), test-batch-size)
 
-    test_loader = torch.utils.data.DataLoader(
-    dset.MNIST('../data', train=False, transform=transforms.Compose([
-                       transforms.ToTensor(),
-                       transforms.Normalize((0.1307,), (0.3081,))
-                   ])),
-                   batch_size=args.test_batch_size, shuffle=True, **kwargs)
-
-    epochs=100
     workers = 1
-    ngpu = 0
-    img_w = 28
-    img_h = 28
-
+    ngpu = 1
     model = dnet.DenseNet().to(device) #Change to: model = densenet.DensePBR().to(device)
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
 
-    for epoch in range(1, args.epochs + 1):
-        train(args, model, device, train_loader, optimizer, epochs)
-        test(args, model, device, test_loader)
+    try:
+        for epoch in range(1, args.epochs + 1):
+            train(args, model, device, train_loader, optimizer, epochs)
+            test(args, model, device, test_loader)
 
-    if (args.save_model):
-        torch.save(model.state_dict(),"mnist_densenet.pt")
+        if (args.save_model):
+            torch.save(model.state_dict(),"densenetpbr.pt")
+
+    except:
+        print("Saving the current model...")
+        torch.save(model.state_dict(), "densenetpbr.pt")
+        print("Saved the model!")

@@ -28,10 +28,13 @@ def loadData(folder):
             np_seg = np.array(image)
             labels.append(torch.tensor(img_to_bitmap(np_seg)))
 
-    return data, labels, dict(zip(data, labels))
+    return data, labels #, dict(zip(data, labels))
 
 def loadTrain(dataPath=path):
     return loadData(dataPath + "/training" )
 
 def loadTest(dataPath=path):
     return loadData(dataPath + "/test")
+
+print(loadTrain()[0])
+print(len(loadTrain()[0]))
