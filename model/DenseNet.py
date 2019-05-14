@@ -124,7 +124,6 @@ class ClassifyBranch(nn.Sequential):
 class DenseNet(nn.Sequential):
     '''
     Vanilla DenseNet backbone as nn.Sequential.
-    
     '''
     def __init__(self, layers=[4,4], growth_rate=8, reduction=0.5, dropRate=0.0):
         super(DenseNet, self).__init__()
@@ -210,7 +209,7 @@ class DensePBR(nn.Module):
             cls_in = []
             for pool in self.pools: # n*n dimensions
                 cls_in.extend(pool(out).view(-1)) # flatten for input into FC layer
-            cls_out = self.classify(torch.tensor(cls_in).resize_(len(cls_in), 1)) #classification output, resize for vertical.
+            cls_out = torch.log_softmax(self.classify(torch.tensor(cls_in).resize_(len(cls_in), 1))) #classification output, resize for vertical.
 
         # Segment Branch
         if self.seg:

@@ -24,32 +24,52 @@ TODO:
 l = nn.NLLLoss()
 
 def smoothL1(x):
+    '''
+    Smooth_L1(x) = {0.5x^2     | abs(x) < 1;
+                    abs(x)-0.5 | otherwise}
+    '''
     return (abs(x)<1).float()*0.5*x.float()**2 + (abs(x)>=1).float()*(abs(x).float()-0.5)
 
-def L_tot(p_set, t_set, lambda):
+def L_tot(p_set, p_ground, t_set, t_ground, cls_pred, cls_ground, phi, alpha, beta): #loss per minibatch
     '''
     Custom loss function, L_tot = 1/Ncls * sum(Lcls(p_i, p*_i)) + lambda * 1/Nreg * sum(p*_i*Lreg(t_i, t*_i))
     Where i is the index of the anchor, i ~ {0, 1, ..., N_anchors-1}
 
-    p_set is set of segmentation masking predicted, p_i is R(a*b) ~ [0, 1], and respective ground truth, p*_i is R(a*b) ~ {0, 1} for each anchor.
-    t_set is set of vectors of dim(t_set(i)) = 8, normalized coordinates of proposal bbox.
-        - t_i is predicted, t*_i is ground truth (generated from segmentation mask)
+    p_set is set of segmentation masking predicted, p_i is R(a*b) ~ [0, 1]
+    p_ground are the respective ground truth, p*_i is R(a*b) ~ {0, 1} for each anchor.
+    t_set is set of vectors of dim(t_set(i)) = 8, normalized coordinates of proposal bbox, t_i is predicted.
+    t_ground contains t*_i, the ground truth (generated from segmentation mask). {Don't need in retina experiments}
+    cls_pred is the predicted class ~ {0, 1, ..., k-1}
+    cls_ground is the ground truth class ~ {0, 1, ..., k-1}
+
 
     Ncls = minibatch size
     Nreg = # of anchor locations
 
-    Lcls = Binary cross entropy loss
+    Lseg = Binary cross entropy loss              {Loss for segmentation}
 
-    Lreg(t_i, t*_i) = Smooth_L1(t_i - t*_i)
-        Smooth_L1(x) = {0.5x^2     | abs(x) < 1;
-                        abs(x)-0.5 | otherwise}
+    Lreg(t_i, t*_i) = Smooth_L1(t_i - t*_i)       {Loss for bbox}
 
     TODO:
-        1. Implement with batch training compatibility: NOTE: This should already be batch training compatibile.
+        1. Fix Lreg, check dimensionality, etc...
     '''
-    Lcls = nn.BCELoss() #seems to be already normalized over Ncls
+    #t_set in the form 2D tensor torch.tensor([[[t1_0, t2_0, t3_0, ..., t8_0], ..., [t1_i, t2_i, t3_i, ..., t8_i]], ... other iterations in minibatch])
+    #where i = k-1, k = # of anchors.
+    Nreg = len(t_set[0][0]) #Number of anchors, can figure out w.r.t. variables given.
+    Lseg, Lreg, Lcls = (0, 0, 0)
 
-    return Lcls + lambda #*Others...
+    if phi!=0:
+        bce = nn.BCELoss() #seems to be already normalized over Ncls, avg BCEloss across minibatch.
+        Lseg = bce(p_set, p_ground)
+
+    if alpha!=0:
+        Lreg = 1/Nreg * (p_ground * smoothL1(t_set - t_ground)) #don't think this is implmeneted correctly. Check over it
+
+    if beta!=0:
+        logloss = nn.NLLLoss()
+        Lcls = logloss(cls_pred, cls_ground) #Class prediction must also be log_softmax then. avg NLLLoss across minibatch.
+
+    return phi*Lseg + alpha*Lreg, + beta*Lcls
 
 
 def train(args, model, device, train_loader, optimizer, epoch):
