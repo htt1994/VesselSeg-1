@@ -74,50 +74,51 @@ def L_tot(p_set, p_ground, t_set, t_ground, cls_pred, cls_ground, phi, alpha, be
 
     return phi*Lseg + alpha*Lreg, + beta*Lcls
 
-def dice(pred, target):
+def jaccard(pred, target):
+    '''
+    J(A, B) = AnB/AuB
+    '''
     return (torch.round(pred).long() & target).view(-1).sum().float()/(torch.round(pred).long().view(-1).sum()+target.view(-1).sum()).float()
 
 def train(args, model, device, train_loader, optimizer, epoch):
     global l
     model.train()
-    avg_dice = 0
-    batch_size = len(train_loader[0])
+    avg_jaccard = 0
+    batch_size = len(train_loader[0])*len(train_loader)
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(deviceg target.to(device)
         optimizer.zero_grad()
         output = model(data)
         loss = l(output[0], target) #output[0] is segmentation prediction
-        avg_dice += dice(output[0], target)
+        avg_jaccard += dice(output[0], target)
         loss.backward()
         optimizer.step()
         if batch_idx % args.log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                epoch, batch_idx * len(data), len(train_loader.dataset),
+                epoch, batch_idx * len(data), batch_size,
                 100. * batch_idx / len(train_loader), loss.item()))
-            print("Avg. dice coefficient: " + str(avg_dice/batch_size)))
+            print("Avg. Jaccard Coefficient: " + str(avg_dice/batch_size)))
 
 
 def test(args, model, device, test_loader):
     global l
     model.eval()
     test_loss = 0
-    avg_dice = 0
+    avg_jaccard = 0
     with torch.no_grad():
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
             output = model(data)
             test_loss += l(output[0], target).item() # sum up batch loss
-            avg_dice += dice(output[0], target)
+            avg_dice += dice(output[0], target) #across minibatch
 
-    print("Test loss is: " + str(test_loss) + " and the avg. dice coefficient is: " + str(avg_dice/len(test_loader)))
+    print("Test Loss is: " + str(test_loss) + " and the Avg. Jaccard Coefficient is: " + str(avg_jaccard/len(test_loader)))
 
 
 def minibatch_init(set, minibatch_size):
     #   Initializes the minibatches. Returns set,
     #   which is structured as of set = [[minibatch 0: composed of minibatch_size (data, target)], [minibatch 1:...], ..., [minibatch k-1]
-
-    #Randomize the groupings on the minibatches
-    shuffle_set = list(zip(set[0], set[1]))
+    shuffle_set = list(zip(set[0], set[1])) #Randomize the groupings on the minibatches
     random.shuffle(shuffle_set)
     temp = list(zip(*shuffle_set))
     c = 0
