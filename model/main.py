@@ -48,24 +48,27 @@ def L_tot(p_set, p_ground, t_set, t_ground, cls_pred, cls_ground, phi, alpha, be
 
     Lseg = Binary cross entropy loss              {Loss for segmentation}
 
-    Lreg(t_i, t*_i) = Smooth_L1(t_i - t*_i)       {Loss for bbox}
+    Lreg(t_i, t*_i) = Smooth_L1(t_i - t*_i)       {Loss for bbox, used to train the region proposal network}
 
+    Lcls = Negative log loss                      {Loss for classification}
     TODO:
-        1. Fix Lreg, check dimensionality, etc...
+        1. Fix Lreg, check dimensionality, etc... (Don't worry too much about this until we MRI stuff though.)
     '''
-    #t_set in the form 2D tensor torch.tensor([[[t1_0, t2_0, t3_0, ..., t8_0], ..., [t1_i, t2_i, t3_i, ..., t8_i]], ... other iterations in minibatch])
-    #where i = k-1, k = # of anchors.
-    Nreg = len(t_set[0][0]) #Number of anchors, can figure out w.r.t. variables given.
     Lseg, Lreg, Lcls = (0, 0, 0)
 
-    if phi!=0:
+    if phi:
         bce = nn.BCELoss() #seems to be already normalized over Ncls, avg BCEloss across minibatch.
         Lseg = bce(p_set, p_ground)
 
-    if alpha!=0:
+    #The following two losses do not matter for retina segmentation!
+
+    #t_set in the form 2D tensor torch.tensor([[[t1_0, t2_0, t3_0, ..., t8_0], ..., [t1_i, t2_i, t3_i, ..., t8_i]], ... other iterations in minibatch])
+    #where i = k-1, k = # of anchors.
+    if alpha:
+        Nreg = len(t_set[0][0]) #Number of anchors, can figure out w.r.t. variables given.
         Lreg = 1/Nreg * (p_ground * smoothL1(t_set - t_ground)) #don't think this is implmeneted correctly. Check over it
 
-    if beta!=0:
+    if beta:
         logloss = nn.NLLLoss()
         Lcls = logloss(cls_pred, cls_ground) #Class prediction must also be log_softmax then. avg NLLLoss across minibatch.
 
