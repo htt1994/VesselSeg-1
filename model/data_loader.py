@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import os
+import random
 from PIL import Image
 
 
@@ -35,6 +36,3 @@ def loadTrain(dataPath=path):
 
 def loadTest(dataPath=path):
     return loadData(dataPath + "/test")
-
-print(loadTrain()[0])
-print(len(loadTrain()[0]))

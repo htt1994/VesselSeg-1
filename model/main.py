@@ -18,8 +18,7 @@ import densenet as dnet
 
 '''
 TODO:
-    1. Finish up L_tot()
-    2. Optimize code/loss function for minibatch training.
+    1. Correct L_tot() so its minibatch training compatible.
 '''
 
 l = nn.BCELoss()
@@ -112,19 +111,23 @@ def test(args, model, device, test_loader):
 
     print("Test loss is: " + str(test_loss) + " and the avg. dice coefficient is: " + str(avg_dice/len(test_loader)))
 
-#initialize the minibatch
+
 def minibatch_init(set, minibatch_size):
-    #randomize training set
-    shuffle_set = random.shuffle(list(zip(set[0], set[1])))
-    temp = zip(*random.shuffle(shuffle_set))
+    #   Initializes the minibatches. Returns set,
+    #   which is structured as of set = [[minibatch 0: composed of minibatch_size (data, target)], [minibatch 1:...], ..., [minibatch k-1]
+
+    #Randomize the groupings on the minibatches
+    shuffle_set = list(zip(set[0], set[1]))
+    random.shuffle(shuffle_set)
+    temp = list(zip(*shuffle_set))
     c = 0
     set = []
     minibatch = []
-    for i in len(temp[0]):
+    for i in range(len(temp[0])): #loop through all elements in set, and assign it into a minibatch
         minibatch.append((temp[0][i], temp[1][i]))
         c += 1
         if not c%minibatch_size:
-            train_loader.append(minibatch)
+            set.append(minibatch)
             minibatch = []
     return set
 
