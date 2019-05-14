@@ -1,22 +1,37 @@
 import numpy as np
+import torch
+import os
+from PIL import Image
 
-path = ''
 
-def loadData( prefix, folder ):
-    intType = np.dtype( 'int32' ).newbyteorder( '>' )
-    nMetaDataBytes = 4 * intType.itemsize
+path = '/Users/Jesse/Desktop/DenseNetPBR/data/DRIVE700x605'
 
-    data = np.fromfile( folder + "/" + prefix + '-', dtype = '' )
-    magicBytes, nImages, width, height = np.frombuffer( data[:nMetaDataBytes].tobytes(), intType )
-    data = data[nMetaDataBytes:].astype( dtype = 'float32' ).reshape( [ nImages, width, height ] )
+def normalize(x):
+    return (x.astype(float)-128)/128
 
-    labels = np.fromfile( folder + "/" + prefix + '',
-                          dtype = '' )[2 * intType.itemsize:]
+def img_to_bitmap(x):
+    return x/255
 
-    return data, labels
+def loadData(folder):
+    data = []
+    labels = []
+
+    for imagePath in os.listdir(folder):
+        if imagePath.endswith(".png"):
+            image = Image.open(folder+'/'+imagePath)
+            np_img = np.array(image)
+            data.append(torch.tensor(np_img))
+
+    for seg in os.listdir(folder+"/manual"):
+        if seg.endswith(".png"):
+            image = Image.open(folder+'/manual/'+seg)
+            np_seg = np.array(image)
+            labels.append(torch.tensor(img_to_bitmap(np_seg)))
+
+    return data, labels, dict(zip(data, labels))
 
 def loadTrain(dataPath=path):
-    return loadMNIST( "train", dataPath )
+    return loadData(dataPath + "/training" )
 
 def loadTest(dataPath=path):
-    return loadMNIST( "t10k", dataPath )
+    return loadData(dataPath + "/test")
