@@ -16,7 +16,7 @@ class BottleneckBlock(nn.Module):
     After l layers, with growth rate k, this gives channel dims:
     (lxk) -> Bn,ReLU,Conv(1) -> (bn_sizexk) - > Bn,ReLU,Conv(3) -> (k)
     '''
-    def __init__(self, channels, out_channels, growth_rate, bn_size=4, dropRate=0.0):
+    def __init__(self, channels, out_channels, growth_rate, bn_size=4, dropRate=0.2):
         super(BottleneckBlock, self).__init__()
         inter_channels = bn_size * growth_rate # number of intermediary channels in bottleneck
         self.bn1 = nn.BatchNorm2d(channels)
@@ -50,7 +50,7 @@ class TransitionBlock(nn.Module):
     After l layers, with growth rate k, this gives channel dims:
     (lxk) -> Bn,ReLU,Conv(1) -> (4xk) - > Bn,ReLU,Conv(3) -> (k)
     '''
-    def __init__(self, channels, out_channels, dropRate=0.0):
+    def __init__(self, channels, out_channels, dropRate=0.2):
         super(TransitionBlock, self).__init__()
         self.bn1 = nn.BatchNorm2d(channels)
         self.relu = nn.ReLU(inplace=True)
@@ -76,7 +76,7 @@ class DenseBlock(nn.Sequential):
     After this block k new higher level feature channels will be added to the "cummulative knowledge"
     providing a total of (Lxk) feature channels at the L'th denseblock
     '''
-    def __init__(self, nb_layers, channels, growth_rate, bn_size=4, dropRate=0.0):
+    def __init__(self, nb_layers, channels, growth_rate, bn_size=4, dropRate=0.2):
         super(DenseBlock, self).__init__()
         for i in range(nb_layers):
             # Each layer, l, has input ko + k(l-1) channels and outputs k channels
@@ -125,7 +125,7 @@ class DenseNet(nn.Sequential):
     '''
     Vanilla DenseNet backbone as nn.Sequential.
     '''
-    def __init__(self, layers=[4,4], growth_rate=8, reduction=0.5, dropRate=0.0):
+    def __init__(self, layers=[4,4], growth_rate=8, reduction=0.5, dropRate=0.2):
         super(DenseNet, self).__init__()
         self.channels = 2 * growth_rate # first conv gives 2k channels
         self.n = layers
