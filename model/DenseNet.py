@@ -4,6 +4,22 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 
+'''
+Date: May, 2019
+
+DenseNetPBR: DenseNet Parallel Branch Retina Experiments
+Implementation of DenseNet/CondenseNet variation for parallel vessel segmentation and
+classification of diatbetic retionpathy detection/diagnosis. Has two parallel branches:
+one for segmentation, and one for classification, both share the same convolutional
+feature map yielded by the DenseNet backbone.
+
+Developed by:
+    Jesse Sun
+    Osvald Nitski
+
+Dr. Bo Wang's AI Lab, University Health Network.
+'''
+
 class BottleneckBlock(nn.Module):
     '''
     Reduces model compexity by changing width (lxk) -> (k)
@@ -150,17 +166,23 @@ class DenseNet(nn.Module):
         self.in_trans_chs.append(3)
         self.in_block_chs.append(self.channels)
 
+        '''
+        Add the blocks and transitions to the queue, depending on channels in and out which we use
+        self.in_trans_chs and self.in_block_chs to help us with.
+        '''
         for i in range(len(self.n)):
             self.seq.append(DenseBlock(self.n[i], self.in_block_chs[i], growth_rate=growth_rate, dropRate=dropRate))
-            self.channels = int(self.channels+self.n[i]*growth_rate)
+            self.channels = int(self.in_block_chs[i]+self.n[i]*growth_rate)
             self.in_trans_chs.append(self.channels)
 
             if i != len(self.n)-1:
-                self.seq.append(TransitionBlock(sum(self.in_trans_chs), int(math.floor(self.channels*reduction)), dropRate=dropRate))
-                self.channels = int(math.floor(self.channels*reduction))
+                in_chs = sum(self.in_trans_chs)
+                self.seq.append(TransitionBlock(in_chs, int(math.floor(in_chs*reduction)), dropRate=dropRate))
+                self.channels = int(math.floor(in_chs*reduction))
                 self.in_block_chs.append(self.channels)
 
         self.condense_ch_final = sum(self.in_trans_chs) #Final number of channels of feature map.
+
         #initialization
         for m in self.modules():
             if isinstance(m, nn.Conv2d):

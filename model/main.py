@@ -94,8 +94,6 @@ def train(args, model, device, train_loader, optimizer, epoch):
         data, target = pack[0].to(device), pack[1].to(device)
         optimizer.zero_grad()
         output = model(data)
-        print(output)
-        print(output[0].shape)
         loss = l(output[0], target) #output[0] is segmentation prediction
         avg_jaccard += dice(output[0], target)
         loss.backward()
