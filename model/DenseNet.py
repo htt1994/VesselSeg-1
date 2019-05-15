@@ -4,7 +4,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 
-
 class BottleneckBlock(nn.Module):
     '''
     Reduces model compexity by changing width (lxk) -> (k)
@@ -19,6 +18,7 @@ class BottleneckBlock(nn.Module):
     def __init__(self, channels, out_channels, growth_rate, bn_size=4, dropRate=0.2):
         super(BottleneckBlock, self).__init__()
         inter_channels = bn_size * growth_rate # number of intermediary channels in bottleneck
+
         self.bn1 = nn.BatchNorm2d(channels)
         self.relu = nn.ReLU(inplace=True)
         self.conv1 = nn.Conv2d(channels, inter_channels,
@@ -53,7 +53,6 @@ class TransitionBlock(nn.Sequential):
     def __init__(self, channels, out_channels, dropRate=0.2):
         super(TransitionBlock, self).__init__()
         self.dropRate = dropRate
-
         self.add_module("BN 1", nn.BatchNorm2d(channels))
         self.add_module("ReLU", nn.ReLU(inplace=True))
         self.add_module("Conv 1", nn.Conv2d(channels, out_channels, kernel_size=1,
@@ -94,6 +93,7 @@ class SPP(nn.Sequential):
     n = side size of post-pool layer. n*n is number of bins for one feature map of layer n.
     '''
     def __init__(self, a, b, n):
+        super(SPP, self).__init__()
         window = (self.ceiling(a/n), self.ceiling(b/n))
         stride = (int(a/n), int(b/n))
         self.add_module('pooling, n = ' + str(n), nn.MaxPool2d(kernel_size=window, stride=stride))
@@ -101,55 +101,66 @@ class SPP(nn.Sequential):
     def ceiling(self, x):
         return int(x) + (x>int(x))
 
-class SegmentBranch(nn.Sequential):
+class SegmentBranch(nn.Module):
     '''
     Segmentation FCN
     For pixel x_f(i,j) on each feature map, where f is feature map number
      are inputs to FCN with a hidden layer and one output node.
     '''
     def __init__(self, f, hidden_seg):
-        self.add_module("conv1x1", nn.Conv2d(f, hidden_seg, kernel_size=1, stride=1))
-        self.add_module("conv1x1_hidden", torch.sigmoid(nn.Conv2d(hidden_seg, 1, kernel_size=1, stride=1))) #apply sigmoid during training.
+        super(SegmentBranch, self).__init__()
+        self.conv1x1 = nn.Conv2d(f, hidden_seg, kernel_size=1, stride=1, padding=0)
+        self.hidden = nn.Conv2d(hidden_seg, 1, kernel_size=1, stride=1, padding=0)
+    def forward(self, input):
+        return torch.sigmoid(self.hidden(self.conv1x1(input)))
 
-class ClassifyBranch(nn.Sequential):
+class ClassifyBranch(nn.Module):
+
     '''
     Classification branch that follows the SPP. SPP vector is input to this branch.
     in_channels = sum(k*f) across all layers of the final conv block. k = nxn, f = # of filters of feature maps pooled from.
     '''
     def __init__(self, in_channels, hidden_cls, num_classes):
-        self.add_module("input layer to hidden", nn.Linear(in_channels, hidden_cls))
-        self.add_module("hidden to output", torch.softmax(nn.Linear(hidden_cls, num_classes)))
+        super(ClassifyBranch, self).__init__()
+        self.lin1 = nn.Linear(in_channels, hidden_cls)
+        self.lin2 = nn.Linear(hidden_cls, num_classes)
+    def forward(self, input):
+        return torch.log_softmax(self.lin2(self.lin1(input)))
 
-class DenseNet(nn.Sequential):
+class DenseNet(nn.Module):
     '''
-    Vanilla DenseNet backbone as nn.Sequential.
+    DenseNet variant implementation: CondenseNet
+    Each DenseBlock output is also concatenated with priors before feeding into the following TransitionBlock.
     '''
-    def __init__(self, layers=[4,4], growth_rate=8, reduction=0.5, dropRate=0.2):
+    def __init__(self, layers=[4,4,4,4], growth_rate=8, reduction=0.5, dropRate=0.2):
         super(DenseNet, self).__init__()
-        self.channels = 2 * growth_rate # first conv gives 2k channels
+        self.channels = 2 * growth_rate
         self.n = layers
 
-        # input transition
-        print("Hello1")
-        self.add_module("BN 1", nn.BatchNorm2d(3)) #Normalizes input w.r.t. minibatch
-        print("Hello2")
-        self.add_module("Conv 1", nn.Conv2d(3, self.channels, kernel_size=3, stride=2, padding=1, bias=False))
+        self.bn0 = nn.BatchNorm2d(3) #Normalizes input w.r.t. minibatch
+        self.conv1 = nn.Conv2d(3, self.channels, kernel_size=3, stride=2,
+                               padding=1, bias=False)
+        self.seq = []
+
+        self.outputs = []
+
+        self.in_trans_chs = [] #even numbers: {c0, c2, c4, ...}
+        self.in_block_chs = [] #odd numbers:  {c1, c3, c5, ...}
+
+        self.in_trans_chs.append(3)
+        self.in_block_chs.append(self.channels)
 
         for i in range(len(self.n)):
-            if i < (len(self.n)-1):
-                self.add_module("Block " + str(i+1), DenseBlock(self.n[i], self.channels, growth_rate=growth_rate, dropRate=dropRate))
-                self.channels = int(self.channels*self.n[i]*growth_rate)
-                print("1: " + str(self.channels))
-                #Transition
-                self.add_module("Transition " + str(i+1), TransitionBlock(channels=self.channels, out_channels=int(math.floor(self.channels*reduction)),
-                                dropRate=dropRate))
+            self.seq.append(DenseBlock(self.n[i], self.in_block_chs[i], growth_rate=growth_rate, dropRate=dropRate))
+            self.channels = int(self.channels+self.n[i]*growth_rate)
+            self.in_trans_chs.append(self.channels)
+
+            if i != len(self.n)-1:
+                self.seq.append(TransitionBlock(sum(self.in_trans_chs), int(math.floor(self.channels*reduction)), dropRate=dropRate))
                 self.channels = int(math.floor(self.channels*reduction))
-                print("2: " + str(self.channels))
+                self.in_block_chs.append(self.channels)
 
-            else:
-                self.add_module("Block " + str(i+1), DenseBlock(self.n[i], self.channels, growth_rate=growth_rate, dropRate=dropRate))
-                self.channels = int(self.channels+self.n[i]*growth_rate)
-
+        self.condense_ch_final = sum(self.in_trans_chs) #Final number of channels of feature map.
         #initialization
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -159,6 +170,26 @@ class DenseNet(nn.Sequential):
                 nn.init.constant_(m.bias, 0)
             elif isinstance(m, nn.Linear):
                 nn.init.constant_(m.bias, 0)
+
+    def forward(self, input):
+        '''
+        We permute because tensor is of shape (N, C, H, W), and we can only concatenate along dim 0, but we want to concat along the channels (dim 1) (with every dim != 0 equal between tensors).
+        Hence, permute(1, 0, 2, 3) to get (C, N, H, W), concatenate as N, H, W are constant between tensors, to get (Cnew, N, H, W), and then permute(1, 0, 2, 3) again to get (N, Cnew, H, W).
+        '''
+        self.outputs.append(input.permute(1,0,2,3))
+        in_dims = (input.shape[2], input.shape[3]) #To keep track of what to upsample the low resolution feature maps to.
+
+        out = self.bn0(input)
+        out = self.conv1(out)
+
+        for i, func in enumerate(self.seq):
+            if i%2 == 0: #if it is a denseblock transformation
+                out = func(out)
+                self.outputs.append(F.interpolate(out, size=in_dims, mode="nearest").permute(1,0,2,3)) #Upsample the output to the correct input dims so we can concat before transition block.
+            else:
+                out = func(torch.cat(self.outputs).permute(1,0,2,3))
+        return torch.cat(self.outputs)
+
 
 class DensePBR(nn.Module):
     '''
@@ -172,7 +203,7 @@ class DensePBR(nn.Module):
     - Classification branch is a sequence of spatial pyramid pooling, yields fixed output size which is passed into FCs for disease classification.
 
     '''
-    def __init__(self, denseNetLayers=[4,4], hidden_cls=144, hidden_seg=64, num_classes=2, spp_layers=[1,2,4], segment=True, classify = True):
+    def __init__(self, denseNetLayers=[4,4,4,4], hidden_cls=144, hidden_seg=64, num_classes=2, spp_layers=[1,2,4], segment=True, classify = False):
         super(DensePBR, self).__init__()
         self.seg = segment
         self.cls = classify
@@ -183,8 +214,7 @@ class DensePBR(nn.Module):
 
         # DenseNet
         self.conv = DenseNet(layers=denseNetLayers)
-        self.channels = self.conv.channels # retrieve channel dim from DenseNet class
-
+        self.channels = self.conv.condense_ch_final # retrieve channel dim from DenseNet class
         # Segment Branch
         self.segment = SegmentBranch(f=self.channels, hidden_seg=hidden_seg)
 
@@ -201,7 +231,7 @@ class DensePBR(nn.Module):
             self.pools.append(SPP(self.map_dims[2], self.map_dims[3], i))
 
     def forward(self, input):
-        out = self.conv(input)
+        out = self.conv.forward(input)
 
         seg_out = None
         cls_out = None
@@ -213,14 +243,56 @@ class DensePBR(nn.Module):
             cls_in = []
             for pool in self.pools: # n*n dimensions
                 cls_in.extend(pool(out).view(-1)) # flatten for input into FC layer
-            cls_out = torch.log_softmax(self.classify(torch.tensor(cls_in).resize_(len(cls_in), 1))) #classification output, resize for vertical.
+            cls_out = torch.log_softmax(self.classify.forward(torch.tensor(cls_in).resize_(len(cls_in), 1))) #classification output, resize for vertical.
 
         # Segment Branch
         if self.seg:
-            seg_out = self.segment(out) if self.prob_out else torch.round(self.segment(out))
+            seg_out = self.segment.forward(out) if self.prob_out else torch.round(self.segment.forward(out))
 
         return seg_out, cls_out
 
     def toggleProbOut(self):
         self.prob_out = not self.prob_out
         print("Outputting segmentation pixelwise probability" if self.prob_out else "Outputting segmentation binary mask")
+
+
+'''
+Old Code Storage Room:
+
+class DenseNet(nn.Sequential):
+    Vanilla DenseNet backbone as nn.Sequential.
+
+    def __init__(self, layers=[4,4], growth_rate=8, reduction=0.5, dropRate=0.2):
+        super(DenseNet, self).__init__()
+        self.channels = 2 * growth_rate # first conv gives 2k channels
+        self.n = layers
+
+        # input transition
+        print("Hello1")
+        self.add_module("BN 1", nn.BatchNorm2d(3)) #Normalizes input w.r.t. minibatch
+        print("Hello2")
+        self.add_module("Conv 1", nn.Conv2d(3, self.channels, kernel_size=3, stride=2, padding=1, bias=False))
+
+        for i in range(len(self.n)):
+            if i < (len(self.n)-1):
+                self.add_module("Block " + str(i+1), DenseBlock(self.n[i], self.channels, growth_rate=growth_rate, dropRate=dropRate))
+                self.channels = int(self.channels*self.n[i]*growth_rate)
+                #Transition
+                self.add_module("Transition " + str(i+1), TransitionBlock(channels=self.channels, out_channels=int(math.floor(self.channels*reduction)),
+                                dropRate=dropRate))
+                self.channels = int(math.floor(self.channels*reduction))
+
+            else:
+                self.add_module("Block " + str(i+1), DenseBlock(self.n[i], self.channels, growth_rate=growth_rate, dropRate=dropRate))
+                self.channels = int(self.channels+self.n[i]*growth_rate)
+
+        #initialization
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight)
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                nn.init.constant_(m.bias, 0)
+'''

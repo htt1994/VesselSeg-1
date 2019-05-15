@@ -91,11 +91,11 @@ def train(args, model, device, train_loader, optimizer, epoch):
     batch_size = len(train_loader[0])*len(train_loader)
     for batch_idx, pack in enumerate(train_loader):
         pack = restructure(pack)
-        #print(pack[0], pack[1].shape)
         data, target = pack[0].to(device), pack[1].to(device)
-        #print(data.shape)
         optimizer.zero_grad()
         output = model(data)
+        print(output)
+        print(output[0].shape)
         loss = l(output[0], target) #output[0] is segmentation prediction
         avg_jaccard += dice(output[0], target)
         loss.backward()
@@ -180,7 +180,7 @@ if __name__ == '__main__':
 
     workers = 1
     ngpu = 1
-    model = dnet.DenseNet().to(device) #Change to: model = densenet.DensePBR().to(device)
+    model = dnet.DensePBR().to(device) #Change to: model = densenet.DensePBR().to(device)
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
 
     #try:
