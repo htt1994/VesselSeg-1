@@ -12,7 +12,7 @@ import torchvision.datasets as dset
 import torchvision.transforms as transforms
 import torchvision.utils as vutils
 import numpy as np
-
+import sys
 import data_loader as dl
 import densenet as dnet
 
@@ -80,13 +80,20 @@ def jaccard(pred, target):
     '''
     return (torch.round(pred).long() & target).view(-1).sum().float()/(torch.round(pred).long().view(-1).sum()+target.view(-1).sum()).float()
 
+def restructure(pack):
+    d = list(zip(*pack))
+    return torch.stack(d[0]).permute(0, 3, 1, 2).float(), torch.stack(d[1]).float()
+
 def train(args, model, device, train_loader, optimizer, epoch):
     global l
     model.train()
     avg_jaccard = 0
     batch_size = len(train_loader[0])*len(train_loader)
-    for batch_idx, (data, target) in enumerate(train_loader):
-        data, target = data.to(deviceg target.to(device)
+    for batch_idx, pack in enumerate(train_loader):
+        pack = restructure(pack)
+        #print(pack[0], pack[1].shape)
+        data, target = pack[0].to(device), pack[1].to(device)
+        #print(data.shape)
         optimizer.zero_grad()
         output = model(data)
         loss = l(output[0], target) #output[0] is segmentation prediction
@@ -97,8 +104,7 @@ def train(args, model, device, train_loader, optimizer, epoch):
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(data), batch_size,
                 100. * batch_idx / len(train_loader), loss.item()))
-            print("Avg. Jaccard Coefficient: " + str(avg_dice/batch_size)))
-
+            print("Avg. Jaccard Coefficient: " + str(avg_dice/batch_size))
 
 def test(args, model, device, test_loader):
     global l
@@ -106,8 +112,9 @@ def test(args, model, device, test_loader):
     test_loss = 0
     avg_jaccard = 0
     with torch.no_grad():
-        for data, target in test_loader:
-            data, target = data.to(device), target.to(device)
+        for pack in test_loader:
+            pack = restructure(pack)
+            data, target = pack[0].to(device), pack[1].long().to(device)
             output = model(data)
             test_loss += l(output[0], target).item() # sum up batch loss
             avg_dice += dice(output[0], target) #across minibatch
@@ -164,23 +171,29 @@ if __name__ == '__main__':
 
     kwargs = {'num_workers': 1, 'pin_memory': True} if use_cuda else {}
 
-    train_loader = minibatch_init(dl.loadTrain(), batch-size)
-    test_loader = minibatch_init(dl.loadTest(), test-batch-size)
+    batch_size = 4
+    test_batch_size = 20
+    epochs = 100
+
+    train_loader = minibatch_init(dl.loadTrain(), batch_size)
+    test_loader = minibatch_init(dl.loadTest(), test_batch_size)
 
     workers = 1
     ngpu = 1
     model = dnet.DenseNet().to(device) #Change to: model = densenet.DensePBR().to(device)
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
 
-    try:
-        for epoch in range(1, args.epochs + 1):
-            train(args, model, device, train_loader, optimizer, epochs)
-            test(args, model, device, test_loader)
+    #try:
+    for epoch in range(1, args.epochs + 1):
+        train(args, model, device, train_loader, optimizer, epochs)
+        test(args, model, device, test_loader)
 
-        if (args.save_model):
-            torch.save(model.state_dict(),"densenetpbr.pt")
+    if (args.save_model):
+        torch.save(model.state_dict(),"densenetpbr.pt")
 
+    '''
     except:
         print("Saving the current model...")
         torch.save(model.state_dict(), "densenetpbr.pt")
         print("Saved the model!")
+    '''

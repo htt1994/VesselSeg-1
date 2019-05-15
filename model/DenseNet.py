@@ -39,7 +39,7 @@ class BottleneckBlock(nn.Module):
             out = F.dropout(out, p=self.dropRate, inplace=False, training=self.training)
         return torch.cat([x, out], 1)
 
-class TransitionBlock(nn.Module):
+class TransitionBlock(nn.Sequential):
     '''
     Down-samples past states to match dims for concatenation
     Takes args channels, out_channels - number of channels into and out of block
@@ -52,17 +52,16 @@ class TransitionBlock(nn.Module):
     '''
     def __init__(self, channels, out_channels, dropRate=0.2):
         super(TransitionBlock, self).__init__()
-        self.bn1 = nn.BatchNorm2d(channels)
-        self.relu = nn.ReLU(inplace=True)
-        self.conv1 = nn.Conv2d(channels, out_channels, kernel_size=1, stride=1,
-                               padding=0, bias=False)
         self.dropRate = dropRate
 
-    def forward(self, x):
-        out = self.conv1(self.relu(self.bn1(x)))
-        if self.dropRate > 0:
-            out = F.dropout(out, p=self.dropRate, inplace=False, training=self.training)
-        return F.avg_pool2d(out, stride=2) # can change pooling type and window here
+        self.add_module("BN 1", nn.BatchNorm2d(channels))
+        self.add_module("ReLU", nn.ReLU(inplace=True))
+        self.add_module("Conv 1", nn.Conv2d(channels, out_channels, kernel_size=1,
+                                            stride=1, padding=0, bias=False))
+        if self.dropRate>0:
+            self.add_module("Dropout", nn.Dropout(self.dropRate))
+
+        self.add_module("Avg pool", nn.AvgPool2d(kernel_size=2))
 
 class DenseBlock(nn.Sequential):
     '''
@@ -131,18 +130,21 @@ class DenseNet(nn.Sequential):
         self.n = layers
 
         # input transition
-        self.add_module("BN 1", nn.BatchNorm2d(3)) '''Should normalize the input across its batches?'''
+        print("Hello1")
+        self.add_module("BN 1", nn.BatchNorm2d(3)) #Normalizes input w.r.t. minibatch
+        print("Hello2")
         self.add_module("Conv 1", nn.Conv2d(3, self.channels, kernel_size=3, stride=2, padding=1, bias=False))
 
         for i in range(len(self.n)):
             if i < (len(self.n)-1):
                 self.add_module("Block " + str(i+1), DenseBlock(self.n[i], self.channels, growth_rate=growth_rate, dropRate=dropRate))
                 self.channels = int(self.channels*self.n[i]*growth_rate)
-
+                print("1: " + str(self.channels))
                 #Transition
-                self.add_module("Transition " + str(i+1), TransitionBlock.forward(self.channels, int(math.floor(self.channels*reduction)),
+                self.add_module("Transition " + str(i+1), TransitionBlock(channels=self.channels, out_channels=int(math.floor(self.channels*reduction)),
                                 dropRate=dropRate))
                 self.channels = int(math.floor(self.channels*reduction))
+                print("2: " + str(self.channels))
 
             else:
                 self.add_module("Block " + str(i+1), DenseBlock(self.n[i], self.channels, growth_rate=growth_rate, dropRate=dropRate))
