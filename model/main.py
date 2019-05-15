@@ -15,7 +15,7 @@ import numpy as np
 import sys
 import data_loader as dl
 import densenet as dnet
-
+torch.set_printoptions(edgeitems=200)
 '''
 TODO:
     1. Correct L_tot() so its minibatch training compatible.
@@ -93,6 +93,7 @@ def train(args, model, device, train_loader, optimizer, epoch):
         pack = restructure(pack)
         data, target = pack[0].to(device), pack[1].to(device)
         optimizer.zero_grad()
+        print(data)
         output = model(data)
         loss = l(output[0], target) #output[0] is segmentation prediction
         avg_jaccard += dice(output[0], target)
