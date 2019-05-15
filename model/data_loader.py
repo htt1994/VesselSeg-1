@@ -4,7 +4,7 @@ import os
 import random
 from PIL import Image
 
-
+#CHANGE THIS ACCORDINGLY TO YOUR OWN FILE LOCATION
 path = '/Users/Jesse/Desktop/DenseNetPBR/data/DRIVE700x605'
 
 def normalize(x, norm): #0 = -128, divide 128. 1 = /255
