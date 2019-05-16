@@ -83,7 +83,8 @@ def jaccard(pred, target):
 
 def restructure(pack):
     d = list(zip(*pack))
-    return torch.stack(d[0]).permute(0, 3, 1, 2).float(), torch.stack(d[1]).float()
+    return torch.stack(d[0]).permute(0, 3, 1, 2).float(), torch.stack(d[1]).float().unsqueeze(1)
+    #We apply .unsqueeze(1) to target to turn (N,W,H) to (N, C, W, H) where C=1 (bit map), to match output/data shape.
 
 def train(args, model, device, train_loader, optimizer, epoch):
     global l
@@ -94,7 +95,7 @@ def train(args, model, device, train_loader, optimizer, epoch):
         pack = restructure(pack)
         data, target = pack[0].to(device), pack[1].to(device)
         optimizer.zero_grad()
-        print(data)
+        print(target.shape)
         output = model(data)
         loss = l(output[0], target) #output[0] is segmentation prediction
         avg_jaccard += dice(output[0], target)
