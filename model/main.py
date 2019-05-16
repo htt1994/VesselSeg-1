@@ -78,7 +78,8 @@ def jaccard(pred, target):
     '''
     J(A, B) = AnB/AuB
     '''
-    return (torch.round(pred).long() & target).view(-1).sum().float()/(torch.round(pred).long().view(-1).sum()+target.view(-1).sum()).float()
+    AnB = (torch.round(pred).long() & target).view(-1).sum().float()
+    return AnB/(torch.round(pred).long().view(-1).sum()+target.view(-1).sum()-AnB).float()
 
 def restructure(pack):
     d = list(zip(*pack))
