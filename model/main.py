@@ -23,6 +23,7 @@ TODO:
 '''
 
 l = nn.BCELoss()
+loss_history = []
 
 def smoothL1(x):
     '''
@@ -82,6 +83,10 @@ def jaccard(pred, target):
     AnB = (torch.round(pred).long() & target.long()).view(-1).sum().float()
     return AnB/(torch.round(pred).long().view(-1).sum()+target.view(-1).sum().long()-AnB).float()
 
+def dice(pred, target):
+    j = jaccard(pred, target)
+    return 2*j/(j+1)
+
 def restructure(pack):
     d = list(zip(*pack))
     return torch.stack(d[0]).permute(0, 3, 1, 2).float(), torch.stack(d[1]).float().unsqueeze(1)
@@ -89,8 +94,10 @@ def restructure(pack):
 
 def train(args, model, device, train_loader, optimizer, epoch):
     global l
+    global loss_history
     model.train()
     avg_jaccard = 0
+    avg_dice = 0
     batch_size = len(train_loader[0])*len(train_loader)
     for batch_idx, pack in enumerate(train_loader):
         print("BATCH ID: " + str(batch_idx+1))
@@ -99,21 +106,23 @@ def train(args, model, device, train_loader, optimizer, epoch):
         optimizer.zero_grad()
         output = model(data)
         loss = l(output[0], target) #output[0] is segmentation prediction
-        print(loss)
         avg_jaccard += jaccard(output[0], target)
+        avg_dice += dice(output[0], target)
+        loss_history.append(("Train", epoch, loss, avg_jaccard/(batch_idx+1), avg_dice/(batch_idx+1)))
         loss.backward()
         optimizer.step()
         if batch_idx % args.log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, (batch_idx+1) * len(data), batch_size,
                 100. * (batch_idx+1) / len(train_loader), loss.item()))
-            print("Avg. Jaccard Coefficient: " + str(avg_jaccard/batch_size))
+            print("Avg. Jaccard Coefficient: " + str(avg_jaccard/batch_size) + " and Avg. Dice: " + str(avg_dice/batch_size))
 
-def test(args, model, device, test_loader):
+def test(args, model, device, test_loader, epoch):
     global l
     model.eval()
     test_loss = 0
     avg_jaccard = 0
+    avg_dice = 0
     with torch.no_grad():
         for pack in test_loader:
             pack = restructure(pack)
@@ -121,9 +130,10 @@ def test(args, model, device, test_loader):
             output = model(data)
             test_loss += l(output[0], target.float()).item() # sum up batch loss
             avg_jaccard += jaccard(output[0], target) #across minibatch
+            avg_dice += dice(output[0], target)
 
-    print("Test Loss is: " + str(test_loss) + " and the Avg. Jaccard Coefficient is: " + str(avg_jaccard/len(test_loader)))
-
+    print("Test Loss is: " + str(test_loss) + ", the Avg. Jaccard Coefficient is: " + str(avg_jaccard/len(test_loader)) + " and the Avg. Dice is: " + str(avg_dice/len(test_loader)))
+    loss_history.append(("Test", epoch, test_loss, avg_jaccard/len(test_loader), avg_dice/len(test_loader)))
 
 def minibatch_init(set, minibatch_size):
     #   Initializes the minibatches. Returns set,
@@ -142,10 +152,15 @@ def minibatch_init(set, minibatch_size):
             minibatch = []
     return set
 
-def debug(model):
-    x = Variable(torch.FloatTensor(4, 3, 605, 700))
-    for feat in model:
-        x = feat(x)
+def save(epoch, model, optimizer, loss, loss_history, PATH):
+    torch.save({
+            'epoch': epoch,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'loss': loss,
+            'loss_history': loss_history,
+            }, PATH)
+
 #Main function
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Retina Segmentation and Classification with DenseNet-Based Architecture')
@@ -181,25 +196,37 @@ if __name__ == '__main__':
     batch_size = 4
     test_batch_size = 20
     epochs = 100
-
+    load_model = True
+    model_path = "densenetpbr_t1.tar"
+    e_count = 1
     train_loader = minibatch_init(dl.loadTrain(), batch_size)
     test_loader = minibatch_init(dl.loadTest(), test_batch_size)
 
     workers = 1
     ngpu = 1
-    model = dnet.DensePBR(denseNetLayers=[2,2]).to(device) #Change to: model = densenet.DensePBR().to(device)
+    model = dnet.DensePBR(denseNetLayers=[4,4,4,4]).to(device) #Change to: model = densenet.DensePBR().to(device)
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
 
+    #Load Model if true:
+    if load_model:
+        checkpoint = torch.load(model_path)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        epoch = checkpoint['epoch']
+        loss = checkpoint['loss']
+        loss_history = checkpoint['loss_history']
+
     try:
-        for epoch in range(1, args.epochs + 1):
+        for epoch in range(e_count, args.epochs + 1):
+            e_count = epoch #Increase epoch count outside of loop.
             train(args, model, device, train_loader, optimizer, epoch)
-            test(args, model, device, test_loader)
+            test(args, model, device, test_loader, epoch)
 
         if (args.save_model):
-            torch.save(model.state_dict(),"densenetpbr.pt")
+            save(e_count, model, optimizer, l, loss_history, model_path)
 
 
     except:
         print("Saving the current model...")
-        torch.save(model.state_dict(), "densenetpbr.pt")
+        save(e_count, model, optimizer, l, loss_history, model_path)
         print("Saved the model!")
