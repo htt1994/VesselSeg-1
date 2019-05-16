@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import torch.nn.parallel
 import torch.backends.cudnn as cudnn
+from torch.autograd import Variable
 import torch.optim as optim
 import torch.utils.data
 import torchvision.datasets as dset
@@ -78,8 +79,8 @@ def jaccard(pred, target):
     '''
     J(A, B) = AnB/AuB
     '''
-    AnB = (torch.round(pred).long() & target).view(-1).sum().float()
-    return AnB/(torch.round(pred).long().view(-1).sum()+target.view(-1).sum()-AnB).float()
+    AnB = (torch.round(pred).long() & target.long()).view(-1).sum().float()
+    return AnB/(torch.round(pred).long().view(-1).sum()+target.view(-1).sum().long()-AnB).float()
 
 def restructure(pack):
     d = list(zip(*pack))
@@ -92,20 +93,21 @@ def train(args, model, device, train_loader, optimizer, epoch):
     avg_jaccard = 0
     batch_size = len(train_loader[0])*len(train_loader)
     for batch_idx, pack in enumerate(train_loader):
+        print("BATCH ID: " + str(batch_idx+1))
         pack = restructure(pack)
         data, target = pack[0].to(device), pack[1].to(device)
         optimizer.zero_grad()
-        print(target.shape)
         output = model(data)
         loss = l(output[0], target) #output[0] is segmentation prediction
-        avg_jaccard += dice(output[0], target)
+        print(loss)
+        avg_jaccard += jaccard(output[0], target)
         loss.backward()
         optimizer.step()
         if batch_idx % args.log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                epoch, batch_idx * len(data), batch_size,
-                100. * batch_idx / len(train_loader), loss.item()))
-            print("Avg. Jaccard Coefficient: " + str(avg_dice/batch_size))
+                epoch, (batch_idx+1) * len(data), batch_size,
+                100. * (batch_idx+1) / len(train_loader), loss.item()))
+            print("Avg. Jaccard Coefficient: " + str(avg_jaccard/batch_size))
 
 def test(args, model, device, test_loader):
     global l
@@ -117,8 +119,8 @@ def test(args, model, device, test_loader):
             pack = restructure(pack)
             data, target = pack[0].to(device), pack[1].long().to(device)
             output = model(data)
-            test_loss += l(output[0], target).item() # sum up batch loss
-            avg_dice += dice(output[0], target) #across minibatch
+            test_loss += l(output[0], target.float()).item() # sum up batch loss
+            avg_jaccard += jaccard(output[0], target) #across minibatch
 
     print("Test Loss is: " + str(test_loss) + " and the Avg. Jaccard Coefficient is: " + str(avg_jaccard/len(test_loader)))
 
@@ -140,6 +142,10 @@ def minibatch_init(set, minibatch_size):
             minibatch = []
     return set
 
+def debug(model):
+    x = Variable(torch.FloatTensor(4, 3, 605, 700))
+    for feat in model:
+        x = feat(x)
 #Main function
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Retina Segmentation and Classification with DenseNet-Based Architecture')
@@ -181,20 +187,19 @@ if __name__ == '__main__':
 
     workers = 1
     ngpu = 1
-    model = dnet.DensePBR().to(device) #Change to: model = densenet.DensePBR().to(device)
+    model = dnet.DensePBR(denseNetLayers=[2,2]).to(device) #Change to: model = densenet.DensePBR().to(device)
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
 
-    #try:
-    for epoch in range(1, args.epochs + 1):
-        train(args, model, device, train_loader, optimizer, epochs)
-        test(args, model, device, test_loader)
+    try:
+        for epoch in range(1, args.epochs + 1):
+            train(args, model, device, train_loader, optimizer, epoch)
+            test(args, model, device, test_loader)
 
-    if (args.save_model):
-        torch.save(model.state_dict(),"densenetpbr.pt")
+        if (args.save_model):
+            torch.save(model.state_dict(),"densenetpbr.pt")
 
-    '''
+
     except:
         print("Saving the current model...")
         torch.save(model.state_dict(), "densenetpbr.pt")
         print("Saved the model!")
-    '''

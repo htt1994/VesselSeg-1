@@ -152,6 +152,7 @@ class DenseNet(nn.Module):
         super(DenseNet, self).__init__()
         self.channels = 2 * growth_rate
         self.n = layers
+        self.instantiated = False
 
         self.bn0 = nn.BatchNorm2d(3) #Normalizes input w.r.t. minibatch
         self.conv1 = nn.Conv2d(3, self.channels, kernel_size=3, stride=2,
@@ -173,16 +174,21 @@ class DenseNet(nn.Module):
         for i in range(len(self.n)):
             self.seq.append(DenseBlock(self.n[i], self.in_block_chs[i], growth_rate=growth_rate, dropRate=dropRate))
             self.channels = int(self.in_block_chs[i]+self.n[i]*growth_rate)
-            self.in_trans_chs.append(self.channels)
+            if not self.instantiated:
+                self.in_trans_chs.append(self.channels)
 
             if i != len(self.n)-1:
                 in_chs = sum(self.in_trans_chs)
+                print(in_chs)
                 self.seq.append(TransitionBlock(in_chs, int(math.floor(in_chs*reduction)), dropRate=dropRate))
                 self.channels = int(math.floor(in_chs*reduction))
-                self.in_block_chs.append(self.channels)
+                if not self.instantiated:
+                    self.in_block_chs.append(self.channels)
 
         self.condense_ch_final = sum(self.in_trans_chs) #Final number of channels of feature map.
-
+        self.instantiated = True
+        print(self.in_trans_chs)
+        print(self.in_block_chs)
         #initialization
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -211,7 +217,9 @@ class DenseNet(nn.Module):
                 self.outputs.append(F.interpolate(out, size=in_dims, mode="nearest").permute(1,0,2,3)) #Upsample the output to the correct input dims so we can concat before transition block.
             else:
                 out = func(torch.cat(self.outputs).permute(1,0,2,3))
-        return torch.cat(self.outputs)
+        val = torch.cat(self.outputs).permute(1,0,2,3) #Restore to (N, C, H, W)
+        self.outputs = []
+        return val
 
 
 class DensePBR(nn.Module):
