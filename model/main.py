@@ -84,6 +84,9 @@ def jaccard(pred, target):
     return AnB/(torch.round(pred).long().view(-1).sum()+target.view(-1).sum().long()-AnB).float()
 
 def dice(pred, target):
+    '''
+    D(A, B) = 2(AnB)/(A + B)
+    '''
     j = jaccard(pred, target)
     return 2*j/(j+1)
 
