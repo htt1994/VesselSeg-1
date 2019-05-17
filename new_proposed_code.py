@@ -1,3 +1,5 @@
+#DOESN'T WORK
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -147,11 +149,14 @@ class DenseNet(nn.Module):
     '''
     DenseNet variant implementation: CondenseNet
     Each DenseBlock output is also concatenated with priors before feeding into the following TransitionBlock.
+    Condense is a bool vector same length as layers that determines if input->layer L-1 is concatenated to future inputs.
     '''
-    def __init__(self, layers=[4,4,4,4], growth_rate=8, reduction=0.5, dropRate=0.2):
+    def __init__(self, layers=[4,4,4,4], condense=[1,1,1,1], growth_rate=8, reduction=0.5, dropRate=0.2):
         super(DenseNet, self).__init__()
         self.channels = 2 * growth_rate
         self.n = layers
+        self.condense = condense
+        #self.condense.append(1) # add true for appending final conv to output - no control for this
         self.instantiated = False
 
         self.bn0 = nn.BatchNorm2d(3) #Normalizes input w.r.t. minibatch
@@ -174,21 +179,21 @@ class DenseNet(nn.Module):
         for i in range(len(self.n)):
             self.seq.append(DenseBlock(self.n[i], self.in_block_chs[i], growth_rate=growth_rate, dropRate=dropRate))
             self.channels = int(self.in_block_chs[i]+self.n[i]*growth_rate)
-            if not self.instantiated:
+            if not self.instantiated: # TODO: determine if this is necessary
                 self.in_trans_chs.append(self.channels)
 
             if i != len(self.n)-1:
-                in_chs = sum(self.in_trans_chs)
-                print(in_chs)
+                in_chs = sum(np.multiply(self.in_trans_chs, self.condense[1:len(self.in_trans_chs)+1])) #New feature
                 self.seq.append(TransitionBlock(in_chs, int(math.floor(in_chs*reduction)), dropRate=dropRate))
                 self.channels = int(math.floor(in_chs*reduction))
                 if not self.instantiated:
                     self.in_block_chs.append(self.channels)
 
-        self.condense_ch_final = sum(self.in_trans_chs) #Final number of channels of feature map.
+        self.condense_ch_final = sum(np.multiply(self.in_trans_chs, self.condense[1:len(self.in_trans_chs)+1]) ) #Final number of channels of feature map.
         self.instantiated = True
         print(self.in_trans_chs)
         print(self.in_block_chs)
+
         #initialization
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -208,13 +213,15 @@ class DenseNet(nn.Module):
         in_dims = (input.shape[2], input.shape[3]) #To keep track of what to upsample the low resolution feature maps to.
 
         out = self.bn0(input)
-        self.outputs.append(out.permute(1,0,2,3)) #Normalize first, before propogating it into following transition blocks.
+        if condense[0]: # Toggle for raw image passing - must be True for segmentation
+            self.outputs.append(out.permute(1,0,2,3)) #Normalize first, before propogating it into following transition blocks.
         out = self.conv1(out)
 
         for i, func in enumerate(self.seq):
             if i%2 == 0: #if it is a denseblock transformation
                 out = func(out)
-                self.outputs.append(F.interpolate(out, size=in_dims, mode="nearest").permute(1,0,2,3)) #Upsample the output to the correct input dims so we can concat before transition block.
+                if self.condense[i+1]: #condense control
+                    self.outputs.append(F.interpolate(out, size=in_dims, mode="nearest").permute(1,0,2,3)) #Upsample the output to the correct input dims so we can concat before transition block.
             else:
                 out = func(torch.cat(self.outputs).permute(1,0,2,3))
         val = torch.cat(self.outputs).permute(1,0,2,3) #Restore to (N, C, H, W)

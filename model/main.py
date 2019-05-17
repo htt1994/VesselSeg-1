@@ -109,8 +109,8 @@ def train(args, model, device, train_loader, optimizer, epoch):
         optimizer.zero_grad()
         output = model(data)
         loss = l(output[0], target) #output[0] is segmentation prediction
-        avg_jaccard += jaccard(output[0], target)
-        avg_dice += dice(output[0], target)
+        avg_jaccard += jaccard(output[0], target).item()
+        avg_dice += dice(output[0], target).item()
         loss_history.append(("Train", epoch, loss, avg_jaccard/(batch_idx+1), avg_dice/(batch_idx+1)))
         loss.backward()
         optimizer.step()
@@ -119,6 +119,11 @@ def train(args, model, device, train_loader, optimizer, epoch):
                 epoch, (batch_idx+1) * len(data), batch_size,
                 100. * (batch_idx+1) / len(train_loader), loss.item()))
             print("Avg. Jaccard Coefficient: " + str(avg_jaccard/batch_size) + " and Avg. Dice: " + str(avg_dice/batch_size))
+        del loss
+        del output
+        del pack
+    del avg_jaccard
+    del avg_dice
 
 def test(args, model, device, test_loader, epoch):
     global l
@@ -132,11 +137,17 @@ def test(args, model, device, test_loader, epoch):
             data, target = pack[0].to(device), pack[1].long().to(device)
             output = model(data)
             test_loss += l(output[0], target.float()).item() # sum up batch loss
-            avg_jaccard += jaccard(output[0], target) #across minibatch
-            avg_dice += dice(output[0], target)
+            avg_jaccard += jaccard(output[0], target).item() #across minibatch
+            avg_dice += dice(output[0], target).item()
+
+            del output
+            del pack
 
     print("Test Loss is: " + str(test_loss) + ", the Avg. Jaccard Coefficient is: " + str(avg_jaccard/len(test_loader)) + " and the Avg. Dice is: " + str(avg_dice/len(test_loader)))
     loss_history.append(("Test", epoch, test_loss, avg_jaccard/len(test_loader), avg_dice/len(test_loader)))
+    del avg_jaccard
+    del avg_dice
+    del test_loss
 
 def minibatch_init(set, minibatch_size):
     #   Initializes the minibatches. Returns set,
@@ -155,14 +166,21 @@ def minibatch_init(set, minibatch_size):
             minibatch = []
     return set
 
-def save(epoch, model, optimizer, loss, loss_history, PATH):
+def save(epoch, model, optimizer, loss, PATH, load_model):
+    global loss_history
+    lh = []
+    if load_model: #If cumulative loss_history already exists, extend it with the current one.
+        lh = torch.load(PATH)["loss_history"].extend(loss_history)
+    else: #Otherwise define it as the loss_history of first training session.
+        lh = loss_history
     torch.save({
             'epoch': epoch,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
             'loss': loss,
-            'loss_history': loss_history,
+            'loss_history': lh,
             }, PATH)
+    loss_history = []
 
 #Main function
 if __name__ == '__main__':
@@ -199,7 +217,7 @@ if __name__ == '__main__':
     batch_size = 4
     test_batch_size = 20
     epochs = 100
-    load_model = True
+    load_model = False
     model_path = "densenetpbr_t1.tar"
     e_count = 1
     train_loader = minibatch_init(dl.loadTrain(), batch_size)
@@ -207,7 +225,7 @@ if __name__ == '__main__':
 
     workers = 1
     ngpu = 1
-    model = dnet.DensePBR(denseNetLayers=[4,4,4,4]).to(device) #Change to: model = densenet.DensePBR().to(device)
+    model = dnet.DensePBR(denseNetLayers=[1,1]).to(device) #Change to: model = densenet.DensePBR().to(device)
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
 
     #Load Model if true:
@@ -224,12 +242,14 @@ if __name__ == '__main__':
             e_count = epoch #Increase epoch count outside of loop.
             train(args, model, device, train_loader, optimizer, epoch)
             test(args, model, device, test_loader, epoch)
+            save(e_count, model, optimizer, l, model_path, load_model)
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
         if (args.save_model):
-            save(e_count, model, optimizer, l, loss_history, model_path)
-
+            save(e_count, model, optimizer, l, model_path, load_model)
 
     except:
         print("Saving the current model...")
-        save(e_count, model, optimizer, l, loss_history, model_path)
+        save(e_count, model, optimizer, l, model_path, load_model)
         print("Saved the model!")
