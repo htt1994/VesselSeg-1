@@ -8,8 +8,6 @@ import torch.nn.parallel
 import torch.backends.cudnn as cudnn
 from torch.autograd import Variable
 import torch.optim as optim
-import torch.utils.data
-import torchvision.datasets as dset
 import torchvision.transforms as transforms
 import torchvision.utils as vutils
 import numpy as np
@@ -19,10 +17,10 @@ import densenet as dnet
 torch.set_printoptions(edgeitems=200)
 '''
 TODO:
-    1. Correct L_tot() so its minibatch training compatible.
+    1. Implement cosine adaptative learning rate.
 '''
 
-l = nn.BCELoss()
+l = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(10))
 loss_history = []
 
 def smoothL1(x):
@@ -119,9 +117,7 @@ def train(args, model, device, train_loader, optimizer, epoch):
                 epoch, (batch_idx+1) * len(data), batch_size,
                 100. * (batch_idx+1) / len(train_loader), loss.item()))
             print("Avg. Jaccard Coefficient: " + str(avg_jaccard/batch_size) + " and Avg. Dice: " + str(avg_dice/batch_size))
-        del loss
         del output
-        del pack
     del avg_jaccard
     del avg_dice
 
@@ -131,6 +127,8 @@ def test(args, model, device, test_loader, epoch):
     test_loss = 0
     avg_jaccard = 0
     avg_dice = 0
+    length = len(test_loader[0])
+
     with torch.no_grad():
         for pack in test_loader:
             pack = restructure(pack)
@@ -139,12 +137,10 @@ def test(args, model, device, test_loader, epoch):
             test_loss += l(output[0], target.float()).item() # sum up batch loss
             avg_jaccard += jaccard(output[0], target).item() #across minibatch
             avg_dice += dice(output[0], target).item()
-
             del output
-            del pack
 
-    print("Test Loss is: " + str(test_loss) + ", the Avg. Jaccard Coefficient is: " + str(avg_jaccard/len(test_loader)) + " and the Avg. Dice is: " + str(avg_dice/len(test_loader)))
-    loss_history.append(("Test", epoch, test_loss, avg_jaccard/len(test_loader), avg_dice/len(test_loader)))
+    print("Test Loss is: " + str(test_loss) + ", the Avg. Jaccard Coefficient is: " + str(avg_jaccard/length) + " and the Avg. Dice is: " + str(avg_dice/length))
+    loss_history.append(("Test", epoch, test_loss, avg_jaccard/length, avg_dice/length))
     del avg_jaccard
     del avg_dice
     del test_loss
@@ -216,18 +212,25 @@ if __name__ == '__main__':
 
     batch_size = 4
     test_batch_size = 20
-    epochs = 100
+    epochs = 150
     load_model = False
     model_path = "densenetpbr_t1.tar"
     e_count = 1
-    train_loader = minibatch_init(dl.loadTrain(), batch_size)
-    test_loader = minibatch_init(dl.loadTest(), test_batch_size)
+    train_loader = dl.loadTrain() # minibatch_init(dl.loadTrain(), batch_size)
+    test_loader = dl.loadTest() # minibatch_init(dl.loadTest(), test_batch_size)
+    lr = 0.1
+    momentum = 0.9
 
     workers = 1
     ngpu = 1
     model = dnet.DensePBR(denseNetLayers=[1,1]).to(device) #Change to: model = densenet.DensePBR().to(device)
-    optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
 
+    for name, param in model.named_parameters():
+        if param.requires_grad:
+            print(name)
+
+    optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum)
+    print("LENGTH " + str(len(test_loader[0])))
     #Load Model if true:
     if load_model:
         checkpoint = torch.load(model_path)
@@ -240,8 +243,8 @@ if __name__ == '__main__':
     try:
         for epoch in range(e_count, args.epochs + 1):
             e_count = epoch #Increase epoch count outside of loop.
-            train(args, model, device, train_loader, optimizer, epoch)
-            test(args, model, device, test_loader, epoch)
+            train(args, model, device, minibatch_init(train_loader, batch_size), optimizer, epoch) #added mb init here to enable shuffling
+            test(args, model, device, minibatch_init(test_loader, test_batch_size), epoch)
             save(e_count, model, optimizer, l, model_path, load_model)
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()

@@ -157,15 +157,18 @@ class DenseNet(nn.Module):
         self.bn0 = nn.BatchNorm2d(3) #Normalizes input w.r.t. minibatch
         self.conv1 = nn.Conv2d(3, self.channels, kernel_size=3, stride=2,
                                padding=1, bias=False)
-        self.seq = []
+
+        self.seq = nn.ModuleList()
 
         self.outputs = []
 
         self.in_trans_chs = [] #even numbers: {c0, c2, c4, ...}
         self.in_block_chs = [] #odd numbers:  {c1, c3, c5, ...}
 
-        self.in_trans_chs.append(3)
-        self.in_block_chs.append(self.channels)
+        if len(self.in_trans_chs) == 0:
+            self.in_trans_chs.append(3)
+        if len(self.in_block_chs) == 0:
+            self.in_block_chs.append(self.channels)
 
         '''
         Add the blocks and transitions to the queue, depending on channels in and out which we use
@@ -189,6 +192,7 @@ class DenseNet(nn.Module):
         self.instantiated = True
         print(self.in_trans_chs)
         print(self.in_block_chs)
+
         #initialization
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -204,11 +208,14 @@ class DenseNet(nn.Module):
         We permute because tensor is of shape (N, C, H, W), and we can only concatenate along dim 0, but we want to concat along the channels (dim 1) (with every dim != 0 equal between tensors).
         Hence, permute(1, 0, 2, 3) to get (C, N, H, W), concatenate as N, H, W are constant between tensors, to get (Cnew, N, H, W), and then permute(1, 0, 2, 3) again to get (N, Cnew, H, W).
         '''
-        #self.outputs.append(input.permute(1,0,2,3))
+        '''
+        We also got rid of initial BN to save memory consumption, may re-add later to see how it may improve the model.
+        '''
+        self.outputs.append(input.permute(1,0,2,3))
         in_dims = (input.shape[2], input.shape[3]) #To keep track of what to upsample the low resolution feature maps to.
 
-        out = self.bn0(input)
-        self.outputs.append(out.permute(1,0,2,3)) #Normalize first, before propogating it into following transition blocks.
+        #out = self.bn0(input)
+        #self.outputs.append(out.permute(1,0,2,3)) #Normalize first, before propogating it into following transition blocks.
         out = self.conv1(out)
 
         for i, func in enumerate(self.seq):
