@@ -103,7 +103,7 @@ def train(args, model, device, train_loader, optimizer, epoch):
     for batch_idx, pack in enumerate(train_loader):
         print("BATCH ID: " + str(batch_idx+1))
         pack = restructure(pack)
-        data, target = pack[0].to(device), pack[1].to(device)
+        data, target = Variable(pack[0].to(device)), Variable(pack[1].to(device))
         optimizer.zero_grad()
         output = model(data)
         loss = l(output[0], target) #output[0] is segmentation prediction
@@ -118,6 +118,10 @@ def train(args, model, device, train_loader, optimizer, epoch):
                 100. * (batch_idx+1) / len(train_loader), loss.item()))
             print("Avg. Jaccard Coefficient: " + str(avg_jaccard/batch_size) + " and Avg. Dice: " + str(avg_dice/batch_size))
         del output
+        del data
+        del target
+    if torch.cuda.is_available(): #Free some GPU memory
+        torch.cuda.empty_cache()
     del avg_jaccard
     del avg_dice
 
@@ -128,22 +132,23 @@ def test(args, model, device, test_loader, epoch):
     avg_jaccard = 0
     avg_dice = 0
     length = len(test_loader[0])
-
     with torch.no_grad():
         for pack in test_loader:
             pack = restructure(pack)
-            data, target = pack[0].to(device), pack[1].long().to(device)
+            data, target = Variable(pack[0].to(device)), Variable(pack[1].to(device))
             output = model(data)
             test_loss += l(output[0], target.float()).item() # sum up batch loss
             avg_jaccard += jaccard(output[0], target).item() #across minibatch
             avg_dice += dice(output[0], target).item()
             del output
-
+            del data
+            del target
     print("Test Loss is: " + str(test_loss) + ", the Avg. Jaccard Coefficient is: " + str(avg_jaccard/length) + " and the Avg. Dice is: " + str(avg_dice/length))
     loss_history.append(("Test", epoch, test_loss, avg_jaccard/length, avg_dice/length))
     del avg_jaccard
     del avg_dice
     del test_loss
+    del test_loader
 
 def minibatch_init(set, minibatch_size):
     #   Initializes the minibatches. Returns set,
@@ -210,27 +215,23 @@ if __name__ == '__main__':
 
     kwargs = {'num_workers': 1, 'pin_memory': True} if use_cuda else {}
 
-    batch_size = 4
+    batch_size = 2
     test_batch_size = 20
-    epochs = 150
+    epochs = 300
     load_model = False
     model_path = "densenetpbr_t1.tar"
     e_count = 1
     train_loader = dl.loadTrain() # minibatch_init(dl.loadTrain(), batch_size)
     test_loader = dl.loadTest() # minibatch_init(dl.loadTest(), test_batch_size)
-    lr = 0.1
+    lr = 0.01
     momentum = 0.9
 
     workers = 1
     ngpu = 1
-    model = dnet.DensePBR(denseNetLayers=[1,1]).to(device) #Change to: model = densenet.DensePBR().to(device)
-
-    for name, param in model.named_parameters():
-        if param.requires_grad:
-            print(name)
+    model = dnet.DensePBR(denseNetLayers=[7,7]).to(device) #Change to: model = densenet.DensePBR().to(device)
 
     optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum)
-    print("LENGTH " + str(len(test_loader[0])))
+
     #Load Model if true:
     if load_model:
         checkpoint = torch.load(model_path)
@@ -240,19 +241,19 @@ if __name__ == '__main__':
         loss = checkpoint['loss']
         loss_history = checkpoint['loss_history']
 
-    try:
-        for epoch in range(e_count, args.epochs + 1):
-            e_count = epoch #Increase epoch count outside of loop.
-            train(args, model, device, minibatch_init(train_loader, batch_size), optimizer, epoch) #added mb init here to enable shuffling
-            test(args, model, device, minibatch_init(test_loader, test_batch_size), epoch)
-            save(e_count, model, optimizer, l, model_path, load_model)
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-
-        if (args.save_model):
-            save(e_count, model, optimizer, l, model_path, load_model)
-
-    except:
-        print("Saving the current model...")
+    #try:
+    for epoch in range(e_count, args.epochs + 1):
+        e_count = epoch #Increase epoch count outside of loop.
+        train(args, model, device, minibatch_init(train_loader, batch_size), optimizer, epoch) #added mb init here to enable shuffling
+        test(args, model, device, minibatch_init(test_loader, test_batch_size), epoch)
         save(e_count, model, optimizer, l, model_path, load_model)
-        print("Saved the model!")
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+    if (args.save_model):
+        save(e_count, model, optimizer, l, model_path, load_model)
+
+    #except:
+    #    print("Saving the current model...")
+    #    save(e_count, model, optimizer, l, model_path, load_model)
+    #    print("Saved the model!")

@@ -31,7 +31,7 @@ class BottleneckBlock(nn.Module):
     After l layers, with growth rate k, this gives channel dims:
     (lxk) -> Bn,ReLU,Conv(1) -> (bn_sizexk) - > Bn,ReLU,Conv(3) -> (k)
     '''
-    def __init__(self, channels, out_channels, growth_rate, bn_size=4, dropRate=0.2):
+    def __init__(self, channels, out_channels, growth_rate, bn_size=4, dropRate=0):
         super(BottleneckBlock, self).__init__()
         inter_channels = bn_size * growth_rate # number of intermediary channels in bottleneck
 
@@ -66,7 +66,7 @@ class TransitionBlock(nn.Sequential):
     After l layers, with growth rate k, this gives channel dims:
     (lxk) -> Bn,ReLU,Conv(1) -> (4xk) - > Bn,ReLU,Conv(3) -> (k)
     '''
-    def __init__(self, channels, out_channels, dropRate=0.2):
+    def __init__(self, channels, out_channels, dropRate=0):
         super(TransitionBlock, self).__init__()
         self.dropRate = dropRate
         self.add_module("BN 1", nn.BatchNorm2d(channels))
@@ -76,7 +76,7 @@ class TransitionBlock(nn.Sequential):
         if self.dropRate>0:
             self.add_module("Dropout", nn.Dropout(self.dropRate))
 
-        self.add_module("Avg pool", nn.AvgPool2d(kernel_size=2))
+        self.add_module("Max pool", nn.MaxPool2d(kernel_size=2))
 
 class DenseBlock(nn.Sequential):
     '''
@@ -90,7 +90,7 @@ class DenseBlock(nn.Sequential):
     After this block k new higher level feature channels will be added to the "cummulative knowledge"
     providing a total of (Lxk) feature channels at the L'th denseblock
     '''
-    def __init__(self, nb_layers, channels, growth_rate, bn_size=4, dropRate=0.2):
+    def __init__(self, nb_layers, channels, growth_rate, bn_size=4, dropRate=0):
         super(DenseBlock, self).__init__()
         for i in range(nb_layers):
             # Each layer, l, has input ko + k(l-1) channels and outputs k channels
@@ -148,7 +148,7 @@ class DenseNet(nn.Module):
     DenseNet variant implementation: CondenseNet
     Each DenseBlock output is also concatenated with priors before feeding into the following TransitionBlock.
     '''
-    def __init__(self, layers=[4,4,4,4], growth_rate=8, reduction=0.5, dropRate=0.2):
+    def __init__(self, layers=[4,4,4,4], growth_rate=8, reduction=0.5, dropRate=0):
         super(DenseNet, self).__init__()
         self.channels = 2 * growth_rate
         self.n = layers
@@ -165,8 +165,8 @@ class DenseNet(nn.Module):
         self.in_trans_chs = [] #even numbers: {c0, c2, c4, ...}
         self.in_block_chs = [] #odd numbers:  {c1, c3, c5, ...}
 
-        if len(self.in_trans_chs) == 0:
-            self.in_trans_chs.append(3)
+        #if len(self.in_trans_chs) == 0:
+        #    self.in_trans_chs.append(3)
         if len(self.in_block_chs) == 0:
             self.in_block_chs.append(self.channels)
 
@@ -211,10 +211,10 @@ class DenseNet(nn.Module):
         '''
         We also got rid of initial BN to save memory consumption, may re-add later to see how it may improve the model.
         '''
-        self.outputs.append(input.permute(1,0,2,3))
+        #self.outputs.append(input.permute(1,0,2,3))
         in_dims = (input.shape[2], input.shape[3]) #To keep track of what to upsample the low resolution feature maps to.
 
-        #out = self.bn0(input)
+        out = self.bn0(input)
         #self.outputs.append(out.permute(1,0,2,3)) #Normalize first, before propogating it into following transition blocks.
         out = self.conv1(out)
 
@@ -300,7 +300,7 @@ Old Code Storage Room:
 class DenseNet(nn.Sequential):
     Vanilla DenseNet backbone as nn.Sequential.
 
-    def __init__(self, layers=[4,4], growth_rate=8, reduction=0.5, dropRate=0.2):
+    def __init__(self, layers=[4,4], growth_rate=8, reduction=0.5, dropRate=0):
         super(DenseNet, self).__init__()
         self.channels = 2 * growth_rate # first conv gives 2k channels
         self.n = layers
