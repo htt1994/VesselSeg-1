@@ -120,6 +120,7 @@ def train(args, model, device, train_loader, optimizer, epoch):
         del output
         del data
         del target
+        del loss
     if torch.cuda.is_available(): #Free some GPU memory
         torch.cuda.empty_cache()
     del avg_jaccard
