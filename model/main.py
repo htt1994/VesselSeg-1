@@ -101,7 +101,7 @@ def train(args, model, device, train_loader, optimizer, epoch):
     avg_dice = 0
     batch_size = len(train_loader[0])*len(train_loader)
     for batch_idx, pack in enumerate(train_loader):
-        print("BATCH ID: " + str(batch_idx+1))
+        #print("BATCH ID: " + str(batch_idx+1))
         pack = restructure(pack)
         data, target = Variable(pack[0].to(device)), Variable(pack[1].to(device))
         optimizer.zero_grad()
@@ -125,6 +125,7 @@ def train(args, model, device, train_loader, optimizer, epoch):
         torch.cuda.empty_cache()
     del avg_jaccard
     del avg_dice
+    del train_loader
 
 def test(args, model, device, test_loader, epoch):
     global l
@@ -144,7 +145,7 @@ def test(args, model, device, test_loader, epoch):
             del output
             del data
             del target
-    print("Test Loss is: " + str(test_loss) + ", the Avg. Jaccard Coefficient is: " + str(avg_jaccard/length) + " and the Avg. Dice is: " + str(avg_dice/length))
+    print("Test Loss is: " + str(test_loss/length) + ", the Avg. Jaccard Coefficient is: " + str(avg_jaccard/length) + " and the Avg. Dice is: " + str(avg_dice/length))
     loss_history.append(("Test", epoch, test_loss, avg_jaccard/length, avg_dice/length))
     del avg_jaccard
     del avg_dice
