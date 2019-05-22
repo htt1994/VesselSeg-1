@@ -122,13 +122,16 @@ def train(args, model, l, device, train_loader, optimizer, batch_size, epoch):
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-
+        
         if batch_idx % args.log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, (batch_idx+1) * len(data), 20,
                 100. * (batch_idx+1) / len(train_loader), loss.item()))
             print("Avg. Jaccard Coefficient: " + str(avg_jaccard/batch_size) + " and Avg. Dice: " + str(avg_dice/batch_size))
-
+    if epoch % 200 == 0:
+        show_img(output[0])
+    if epoch == 1:
+        show_img(target)
         del output
         del data
         del target
@@ -161,7 +164,7 @@ def test(args, model, l, device, test_loader, batch_size, epoch):
             avg_jaccard += jaccard(torch.sigmoid(output[0]).detach(), target).item()#across minibatch
             avg_dice += dice(torch.sigmoid(output[0]).detach(), target).item()
 
-            show_img(output[0])
+            #show_img(output[0])
 
             del output
             del data
@@ -227,7 +230,6 @@ if __name__ == '__main__':
                         help='random seed (default: 1)')
     parser.add_argument('--log-interval', type=int, default=1, metavar='N',
                         help='how many batches to wait before logging training status')
-
     parser.add_argument('--save-model', action='store_true', default=True,
                         help='For Saving the current Model')
 
@@ -243,19 +245,20 @@ if __name__ == '__main__':
 
     batch_size = 1
     test_batch_size = 4
-    epochs = 40
+    epochs = 2000
     load_model = False
     model_path = "densenetpbr_t1.tar"
     e_count = 1
     train_loader = dl.loadTrain() #minibatch_init(dl.loadTrain(), batch_size)
     test_loader = dl.loadTest()  #minibatch_init(dl.loadTest(), test_batch_size)
-    lr = 0.001
+    lr = 0.5
     momentum = 0.9
-    loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(7)).to(device)
+    #loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(10)).to(device)
+    loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(0.1)).to(device)
 
     workers = 1
     ngpu = 1
-    model = dnet.DensePBR(denseNetLayers=[4, 4, 4])
+    model = dnet.DensePBR(denseNetLayers=[4, 4])
     optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum)
 
     # not doing this on our machines
@@ -277,7 +280,7 @@ if __name__ == '__main__':
     for epoch in range(1, epochs+1):#epochs+1):
         e_count = epoch #Increase epoch count outside of loop.
         train(args, model, loss, device, minibatch_init(train_loader, batch_size), optimizer, batch_size, epoch)
-        test(args, model, loss, device, minibatch_init(test_loader, test_batch_size), test_batch_size, epoch)
+        #test(args, model, loss, device, minibatch_init(test_loader, test_batch_size), test_batch_size, epoch)
         #save(e_count, model, optimizer, l, model_path, load_model)
         #if torch.cuda.is_available():
         #    torch.cuda.empty_cache()
