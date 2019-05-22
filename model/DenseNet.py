@@ -125,13 +125,13 @@ class SegmentBranch(nn.Module):
     '''
     def __init__(self, f, hidden_seg):
         super(SegmentBranch, self).__init__()
+        self.relu = nn.ReLU(inplace=True)
         self.conv1x1 = nn.Conv2d(f, hidden_seg, kernel_size=1, stride=1, padding=0)
         self.hidden = nn.Conv2d(hidden_seg, 1, kernel_size=1, stride=1, padding=0)
     def forward(self, input):
-        return torch.sigmoid(self.hidden(self.conv1x1(input)))
+        return self.hidden(self.relu(self.conv1x1(input)))
 
 class ClassifyBranch(nn.Module):
-
     '''
     Classification branch that follows the SPP. SPP vector is input to this branch.
     in_channels = sum(k*f) across all layers of the final conv block. k = nxn, f = # of filters of feature maps pooled from.
@@ -141,7 +141,7 @@ class ClassifyBranch(nn.Module):
         self.lin1 = nn.Linear(in_channels, hidden_cls)
         self.lin2 = nn.Linear(hidden_cls, num_classes)
     def forward(self, input):
-        return torch.log_softmax(self.lin2(self.lin1(input)))
+        return torch.softmax(self.lin2(self.lin1(input)))
 
 class DenseNet(nn.Module):
     '''
@@ -182,7 +182,7 @@ class DenseNet(nn.Module):
 
             if i != len(self.n)-1:
                 in_chs = sum(self.in_trans_chs)
-                print(in_chs)
+                #print(in_chs)
                 self.seq.append(TransitionBlock(in_chs, int(math.floor(in_chs*reduction)), dropRate=dropRate))
                 self.channels = int(math.floor(in_chs*reduction))
                 if not self.instantiated:
@@ -190,8 +190,8 @@ class DenseNet(nn.Module):
 
         self.condense_ch_final = sum(self.in_trans_chs) #Final number of channels of feature map.
         self.instantiated = True
-        print(self.in_trans_chs)
-        print(self.in_block_chs)
+        #print(self.in_trans_chs)
+        #print(self.in_block_chs)
 
         #initialization
         for m in self.modules():

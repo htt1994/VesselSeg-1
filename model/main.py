@@ -1,4 +1,5 @@
 from __future__ import print_function
+from PIL import Image
 import argparse
 import os
 import random
@@ -94,30 +95,26 @@ def restructure(pack):
     return torch.stack(d[0]).permute(0, 3, 1, 2).float(), torch.stack(d[1]).float().unsqueeze(1)
     #We apply .unsqueeze(1) to target to turn (N,W,H) to (N, C, W, H) where C=1 (bit map), to match output/data shape.
 
+def show_img(img):
+    img = Image.fromarray(torch.Tensor.numpy(img.detach())[0][0], 'I')
+    img.show()
+
 def train(args, model, l, device, train_loader, optimizer, batch_size, epoch):
     global loss_history
     model.train()
     avg_jaccard = 0
     avg_dice = 0
 
-    im_data = torch.FloatTensor(1).to(device)
-    im_target = torch.FloatTensor(1).to(device)
-    im_output = torch.FloatTensor(1).to(device)
-
     for batch_idx, pack in enumerate(train_loader):
         #print("BATCH ID: " + str(batch_idx+1))
         pack = restructure(pack)
 
         data, target = Variable(pack[0].to(device)), Variable(pack[1].to(device))
-        im_data.resize_(data.shape).copy_(data)
-        im_target.resize_(target.shape).copy_(target)
 
-        output = model(im_data)
-        im_output.resize_(output[0].shape).copy_(output[0])
-
-        loss = l(im_output, im_target) #output[0] is segmentation prediction
-        avg_jaccard += jaccard(im_output.detach(), im_target).item()
-        avg_dice += dice(im_output.detach(), im_target).item()
+        output = model(data)
+        loss = l(output[0], target) #output[0] is segmentation prediction
+        avg_jaccard = jaccard(torch.sigmoid(output[0]).detach(), target).item()
+        avg_dice = dice(torch.sigmoid(output[0]).detach(), target).item()
        # loss_history.append(("Train", epoch, loss, avg_jaccard/(batch_idx+1), avg_dice/(batch_idx+1)))
 
         optimizer.zero_grad()
@@ -126,7 +123,7 @@ def train(args, model, l, device, train_loader, optimizer, batch_size, epoch):
 
         if batch_idx % args.log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                epoch, (batch_idx+1) * len(data), batch_size,
+                epoch, (batch_idx+1) * len(data), 20,
                 100. * (batch_idx+1) / len(train_loader), loss.item()))
             print("Avg. Jaccard Coefficient: " + str(avg_jaccard/batch_size) + " and Avg. Dice: " + str(avg_dice/batch_size))
 
@@ -151,23 +148,18 @@ def test(args, model, l, device, test_loader, batch_size, epoch):
     avg_jaccard = 0
     avg_dice = 0
 
-    im_data = torch.FloatTensor(1).to(device)
-    im_target = torch.FloatTensor(1).to(device)
-    im_output = torch.FloatTensor(1).to(device)
-
     with torch.no_grad():
         for pack in test_loader:
             pack = restructure(pack)
             data, target = pack[0].to(device), pack[1].to(device)
 
-            im_data.resize_(data.shape).copy_(data)
-            im_target.resize_(target.shape).copy_(target)
             output = model(data)
-            im_output.resize_(target.shape).copy_(output[0])
 
-            test_loss += l(im_output.detach(), im_target.float()).detach().item() # sum up batch loss
-            avg_jaccard += jaccard(im_output.detach(), im_target).item()#across minibatch
-            avg_dice += dice(im_output.detach(), im_target).item()
+            test_loss += l(output[0].detach(), target.float()).detach().item() # sum up batch loss
+            avg_jaccard += jaccard(torch.sigmoid(output[0]).detach(), target).item()#across minibatch
+            avg_dice += dice(torch.sigmoid(output[0]).detach(), target).item()
+
+            show_img(output[0])
 
             del output
             del data
@@ -240,7 +232,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     use_cuda = not args.no_cuda and torch.cuda.is_available()
 
-    print(use_cuda)
+    #print(use_cuda)
     torch.manual_seed(args.seed)
 
     device = torch.device("cuda" if use_cuda else "cpu")
@@ -249,7 +241,7 @@ if __name__ == '__main__':
 
     batch_size = 1
     test_batch_size = 4
-    epochs = 1000
+    epochs = 10
     load_model = False
     model_path = "densenetpbr_t1.tar"
     e_count = 1
@@ -257,11 +249,11 @@ if __name__ == '__main__':
     test_loader = dl.loadTest()  #minibatch_init(dl.loadTest(), test_batch_size)
     lr = 0.01
     momentum = 0.9
-    loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(15)).to(device)
+    loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(8)).to(device)
 
     workers = 1
     ngpu = 1
-    model = dnet.DensePBR(denseNetLayers=[4,4,4,4])
+    model = dnet.DensePBR(denseNetLayers=[4,4,4])
     optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum)
 
     if torch.cuda.device_count() > 1:
@@ -279,7 +271,7 @@ if __name__ == '__main__':
         loss_history = checkpoint['loss_history']
 
    # try:
-    for epoch in range(e_count, epochs+1):
+    for epoch in range(e_count, 2):#epochs+1):
         e_count = epoch #Increase epoch count outside of loop.
         train(args, model, loss, device, minibatch_init(train_loader, batch_size), optimizer, batch_size, epoch)
         test(args, model, loss, device, minibatch_init(test_loader, test_batch_size), test_batch_size, epoch)
@@ -288,7 +280,7 @@ if __name__ == '__main__':
             torch.cuda.empty_cache()
 
     if (args.save_model):
-        save(e_count, model, optimizer, l, model_path, load_model)
+        save(e_count, model, optimizer, loss, model_path, load_model)
         print("Saved model!")
     # except:
 

@@ -28,7 +28,6 @@ def loadData(folder):
             image = Image.open(folder+'/manual/'+seg)
             np_seg = np.array(image)
             labels.append(torch.tensor(img_to_bitmap(np_seg)))
-            print(sum(sum(img_to_bitmap(np_seg))))
     return data, labels #, dict(zip(data, labels))
 
 def loadTrain(dataPath=path):
@@ -36,5 +35,3 @@ def loadTrain(dataPath=path):
 
 def loadTest(dataPath=path):
     return loadData(dataPath + "/test")
-
-loadTrain()
