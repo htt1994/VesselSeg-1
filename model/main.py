@@ -5,6 +5,7 @@ import random
 import torch
 import torch.nn as nn
 import torch.nn.parallel
+import torch.distributed
 import torch.backends.cudnn as cudnn
 from torch.autograd import Variable
 import torch.optim as optim
@@ -14,13 +15,13 @@ import numpy as np
 import sys
 import data_loader as dl
 import densenet as dnet
-torch.set_printoptions(edgeitems=200)
+
+torch.set_printoptions(edgeitems=350)
+
 '''
 TODO:
-    1. Implement cosine adaptative learning rate.
+    1. Correct L_tot() so its minibatch training compatible.
 '''
-
-l = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(10))
 loss_history = []
 
 def smoothL1(x):
@@ -78,8 +79,8 @@ def jaccard(pred, target):
     '''
     J(A, B) = AnB/AuB
     '''
-    AnB = (torch.round(pred).long() & target.long()).view(-1).sum().float()
-    return AnB/(torch.round(pred).long().view(-1).sum()+target.view(-1).sum().long()-AnB).float()
+    AnB = (torch.round(torch.sigmoid(pred)).long() & target.long()).view(-1).sum().float()
+    return (AnB/(torch.round(torch.sigmoid(pred)).long().view(-1).sum()+target.view(-1).sum().long()-AnB).float())
 
 def dice(pred, target):
     '''
@@ -93,60 +94,88 @@ def restructure(pack):
     return torch.stack(d[0]).permute(0, 3, 1, 2).float(), torch.stack(d[1]).float().unsqueeze(1)
     #We apply .unsqueeze(1) to target to turn (N,W,H) to (N, C, W, H) where C=1 (bit map), to match output/data shape.
 
-def train(args, model, device, train_loader, optimizer, epoch):
-    global l
+def train(args, model, l, device, train_loader, optimizer, batch_size, epoch):
     global loss_history
     model.train()
     avg_jaccard = 0
     avg_dice = 0
-    batch_size = len(train_loader[0])*len(train_loader)
+
+    im_data = torch.FloatTensor(1).to(device)
+    im_target = torch.FloatTensor(1).to(device)
+    im_output = torch.FloatTensor(1).to(device)
+
     for batch_idx, pack in enumerate(train_loader):
         #print("BATCH ID: " + str(batch_idx+1))
         pack = restructure(pack)
+
         data, target = Variable(pack[0].to(device)), Variable(pack[1].to(device))
+        im_data.resize_(data.shape).copy_(data)
+        im_target.resize_(target.shape).copy_(target)
+
+        output = model(im_data)
+        im_output.resize_(output[0].shape).copy_(output[0])
+
+        loss = l(im_output, im_target) #output[0] is segmentation prediction
+        avg_jaccard += jaccard(im_output.detach(), im_target).item()
+        avg_dice += dice(im_output.detach(), im_target).item()
+       # loss_history.append(("Train", epoch, loss, avg_jaccard/(batch_idx+1), avg_dice/(batch_idx+1)))
+
         optimizer.zero_grad()
-        output = model(data)
-        loss = l(output[0], target) #output[0] is segmentation prediction
-        avg_jaccard += jaccard(output[0], target).item()
-        avg_dice += dice(output[0], target).item()
-        loss_history.append(("Train", epoch, loss, avg_jaccard/(batch_idx+1), avg_dice/(batch_idx+1)))
         loss.backward()
         optimizer.step()
+
         if batch_idx % args.log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, (batch_idx+1) * len(data), batch_size,
                 100. * (batch_idx+1) / len(train_loader), loss.item()))
             print("Avg. Jaccard Coefficient: " + str(avg_jaccard/batch_size) + " and Avg. Dice: " + str(avg_dice/batch_size))
+
         del output
         del data
         del target
-        del loss
-    if torch.cuda.is_available(): #Free some GPU memory
+
+    if torch.cuda.is_available():
         torch.cuda.empty_cache()
+
     del avg_jaccard
     del avg_dice
     del train_loader
 
-def test(args, model, device, test_loader, epoch):
-    global l
+def test(args, model, l, device, test_loader, batch_size, epoch):
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
     model.eval()
+
     test_loss = 0
     avg_jaccard = 0
     avg_dice = 0
-    length = len(test_loader[0])
+
+    im_data = torch.FloatTensor(1).to(device)
+    im_target = torch.FloatTensor(1).to(device)
+    im_output = torch.FloatTensor(1).to(device)
+
     with torch.no_grad():
         for pack in test_loader:
             pack = restructure(pack)
-            data, target = Variable(pack[0].to(device)), Variable(pack[1].to(device))
+            data, target = pack[0].to(device), pack[1].to(device)
+
+            im_data.resize_(data.shape).copy_(data)
+            im_target.resize_(target.shape).copy_(target)
             output = model(data)
-            test_loss += l(output[0], target.float()).item() # sum up batch loss
-            avg_jaccard += jaccard(output[0], target).item() #across minibatch
-            avg_dice += dice(output[0], target).item()
+            im_output.resize_(target.shape).copy_(output[0])
+
+            test_loss += l(im_output.detach(), im_target.float()).detach().item() # sum up batch loss
+            avg_jaccard += jaccard(im_output.detach(), im_target).item()#across minibatch
+            avg_dice += dice(im_output.detach(), im_target).item()
+
             del output
             del data
             del target
-    print("Test Loss is: " + str(test_loss/length) + ", the Avg. Jaccard Coefficient is: " + str(avg_jaccard/length) + " and the Avg. Dice is: " + str(avg_dice/length))
-    loss_history.append(("Test", epoch, test_loss, avg_jaccard/length, avg_dice/length))
+
+    print("Test Loss is: " + str(test_loss/batch_size) + ", the Avg. Jaccard Coefficient is: " + str(avg_jaccard/batch_size) + " and the Avg. Dice is: " + str(avg_dice/batch_size))
+   # loss_history.append(("Test", epoch, test_loss, avg_jaccard/length, avg_dice/length))
+
     del avg_jaccard
     del avg_dice
     del test_loss
@@ -211,28 +240,34 @@ if __name__ == '__main__':
     args = parser.parse_args()
     use_cuda = not args.no_cuda and torch.cuda.is_available()
 
+    print(use_cuda)
     torch.manual_seed(args.seed)
 
     device = torch.device("cuda" if use_cuda else "cpu")
 
     kwargs = {'num_workers': 1, 'pin_memory': True} if use_cuda else {}
 
-    batch_size = 2
-    test_batch_size = 20
-    epochs = 300
+    batch_size = 1
+    test_batch_size = 4
+    epochs = 1000
     load_model = False
     model_path = "densenetpbr_t1.tar"
     e_count = 1
-    train_loader = dl.loadTrain() # minibatch_init(dl.loadTrain(), batch_size)
-    test_loader = dl.loadTest() # minibatch_init(dl.loadTest(), test_batch_size)
+    train_loader = dl.loadTrain() #minibatch_init(dl.loadTrain(), batch_size)
+    test_loader = dl.loadTest()  #minibatch_init(dl.loadTest(), test_batch_size)
     lr = 0.01
     momentum = 0.9
+    loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(15)).to(device)
 
     workers = 1
     ngpu = 1
-    model = dnet.DensePBR(denseNetLayers=[7,7]).to(device) #Change to: model = densenet.DensePBR().to(device)
-
+    model = dnet.DensePBR(denseNetLayers=[4,4,4,4])
     optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum)
+
+    if torch.cuda.device_count() > 1:
+        model = nn.DataParallel(model)
+
+    model.to(device)
 
     #Load Model if true:
     if load_model:
@@ -243,19 +278,20 @@ if __name__ == '__main__':
         loss = checkpoint['loss']
         loss_history = checkpoint['loss_history']
 
-    #try:
-    for epoch in range(e_count, args.epochs + 1):
+   # try:
+    for epoch in range(e_count, epochs+1):
         e_count = epoch #Increase epoch count outside of loop.
-        train(args, model, device, minibatch_init(train_loader, batch_size), optimizer, epoch) #added mb init here to enable shuffling
-        test(args, model, device, minibatch_init(test_loader, test_batch_size), epoch)
-        save(e_count, model, optimizer, l, model_path, load_model)
+        train(args, model, loss, device, minibatch_init(train_loader, batch_size), optimizer, batch_size, epoch)
+        test(args, model, loss, device, minibatch_init(test_loader, test_batch_size), test_batch_size, epoch)
+        #save(e_count, model, optimizer, l, model_path, load_model)
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
     if (args.save_model):
         save(e_count, model, optimizer, l, model_path, load_model)
+        print("Saved model!")
+    # except:
 
-    #except:
-    #    print("Saving the current model...")
-    #    save(e_count, model, optimizer, l, model_path, load_model)
-    #    print("Saved the model!")
+     #    print("Saving the current model)
+      #   save(e_count, model, optimizer, l, model_path, load_model)
+       #  print("Saved the model!")
