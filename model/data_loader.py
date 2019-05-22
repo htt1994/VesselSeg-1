@@ -5,7 +5,8 @@ import random
 from PIL import Image
 
 #CHANGE THIS ACCORDINGLY TO YOUR OWN FILE LOCATION
-path = '/Users/Jesse/Desktop/DenseNetPBR/data/DRIVE700x605'
+#path = '/Users/Jesse/Desktop/DenseNetPBR/data/DRIVE700x605'
+path = '/home/wanglab/Osvald/Imaging/DenseNetPBR/data/DRIVE700x605'
 
 def normalize(x, norm): #0 = -128, divide 128. 1 = /255
     return (x.astype(float)-128)/128  if norm == 0 else x.astype(float)/255

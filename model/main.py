@@ -15,7 +15,7 @@ import torchvision.utils as vutils
 import numpy as np
 import sys
 import data_loader as dl
-import densenet as dnet
+import DenseNet as dnet
 
 torch.set_printoptions(edgeitems=350)
 
@@ -96,6 +96,8 @@ def restructure(pack):
     #We apply .unsqueeze(1) to target to turn (N,W,H) to (N, C, W, H) where C=1 (bit map), to match output/data shape.
 
 def show_img(img):
+    if use_cuda:
+        img = img.cpu()
     img = Image.fromarray(torch.Tensor.numpy(img.detach())[0][0], 'I')
     img.show()
 
@@ -131,16 +133,16 @@ def train(args, model, l, device, train_loader, optimizer, batch_size, epoch):
         del data
         del target
 
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
+    #if torch.cuda.is_available():
+    #    torch.cuda.empty_cache()
 
     del avg_jaccard
     del avg_dice
     del train_loader
 
 def test(args, model, l, device, test_loader, batch_size, epoch):
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
+    #if torch.cuda.is_available():
+    #    torch.cuda.empty_cache()
 
     model.eval()
 
@@ -241,23 +243,24 @@ if __name__ == '__main__':
 
     batch_size = 1
     test_batch_size = 4
-    epochs = 10
+    epochs = 40
     load_model = False
     model_path = "densenetpbr_t1.tar"
     e_count = 1
     train_loader = dl.loadTrain() #minibatch_init(dl.loadTrain(), batch_size)
     test_loader = dl.loadTest()  #minibatch_init(dl.loadTest(), test_batch_size)
-    lr = 0.01
+    lr = 0.001
     momentum = 0.9
-    loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(8)).to(device)
+    loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(7)).to(device)
 
     workers = 1
     ngpu = 1
-    model = dnet.DensePBR(denseNetLayers=[4,4,4])
+    model = dnet.DensePBR(denseNetLayers=[4, 4, 4])
     optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum)
 
-    if torch.cuda.device_count() > 1:
-        model = nn.DataParallel(model)
+    # not doing this on our machines
+    #if torch.cuda.device_count() > 1:
+    #    model = nn.DataParallel(model)
 
     model.to(device)
 
@@ -271,13 +274,13 @@ if __name__ == '__main__':
         loss_history = checkpoint['loss_history']
 
    # try:
-    for epoch in range(e_count, 2):#epochs+1):
+    for epoch in range(1, epochs+1):#epochs+1):
         e_count = epoch #Increase epoch count outside of loop.
         train(args, model, loss, device, minibatch_init(train_loader, batch_size), optimizer, batch_size, epoch)
         test(args, model, loss, device, minibatch_init(test_loader, test_batch_size), test_batch_size, epoch)
         #save(e_count, model, optimizer, l, model_path, load_model)
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+        #if torch.cuda.is_available():
+        #    torch.cuda.empty_cache()
 
     if (args.save_model):
         save(e_count, model, optimizer, loss, model_path, load_model)
