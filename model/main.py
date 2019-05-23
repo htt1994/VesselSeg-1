@@ -22,6 +22,7 @@ torch.set_printoptions(edgeitems=350)
 '''
 TODO:
     1. Correct L_tot() so its minibatch training compatible.
+    test uncommenting cache
 '''
 loss_history = []
 
@@ -80,8 +81,8 @@ def jaccard(pred, target):
     '''
     J(A, B) = AnB/AuB
     '''
-    AnB = (torch.round(torch.sigmoid(pred)).long() & target.long()).view(-1).sum().float()
-    return (AnB/(torch.round(torch.sigmoid(pred)).long().view(-1).sum()+target.view(-1).sum().long()-AnB).float())
+    AnB = (torch.round(pred).long() & target.long()).view(-1).sum().float()
+    return (AnB/(torch.round(pred).long().view(-1).sum()+target.view(-1).sum().long()-AnB).float())
 
 def dice(pred, target):
     '''
@@ -101,11 +102,12 @@ def show_img(img):
     img = Image.fromarray(torch.Tensor.numpy(img.detach())[0][0], 'I')
     img.show()
 
-def train(args, model, l, device, train_loader, optimizer, batch_size, epoch):
+def train(args, model, l, device, train_loader, optimizer, batch_size, epoch, print_rate=5):
     global loss_history
     model.train()
     avg_jaccard = 0
     avg_dice = 0
+    train_loss = 0
 
     for batch_idx, pack in enumerate(train_loader):
         #print("BATCH ID: " + str(batch_idx+1))
@@ -115,6 +117,7 @@ def train(args, model, l, device, train_loader, optimizer, batch_size, epoch):
 
         output = model(data)
         loss = l(output[0], target) #output[0] is segmentation prediction
+        train_loss += loss/len(train_loader)
         avg_jaccard = jaccard(torch.sigmoid(output[0]).detach(), target).item()
         avg_dice = dice(torch.sigmoid(output[0]).detach(), target).item()
        # loss_history.append(("Train", epoch, loss, avg_jaccard/(batch_idx+1), avg_dice/(batch_idx+1)))
@@ -123,11 +126,18 @@ def train(args, model, l, device, train_loader, optimizer, batch_size, epoch):
         loss.backward()
         optimizer.step()
         
-        if batch_idx % args.log_interval == 0:
-            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                epoch, (batch_idx+1) * len(data), 20,
-                100. * (batch_idx+1) / len(train_loader), loss.item()))
-            print("Avg. Jaccard Coefficient: " + str(avg_jaccard/batch_size) + " and Avg. Dice: " + str(avg_dice/batch_size))
+        #TODO: track Dice average
+        #if batch_idx % args.log_interval == 0:
+        #    print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+        #        epoch, (batch_idx+1) * len(data), 20,
+        #        100. * (batch_idx+1) / len(train_loader), loss.item()))
+        #    print("Avg. Jaccard Coefficient: " + str(avg_jaccard/batch_size) + " and Avg. Dice: " + str(avg_dice/batch_size))
+
+    if epoch % print_rate == 0:
+        print('Train loss at epoch %s:' % epoch, str(float(train_loss.data)))
+        #TODO: print Dice average for training data
+
+
     if epoch % 200 == 0:
         show_img(output[0])
     if epoch == 1:
@@ -164,12 +174,14 @@ def test(args, model, l, device, test_loader, batch_size, epoch):
             avg_jaccard += jaccard(torch.sigmoid(output[0]).detach(), target).item()#across minibatch
             avg_dice += dice(torch.sigmoid(output[0]).detach(), target).item()
 
+            #TODO: print SAME image every
             #show_img(output[0])
 
             del output
             del data
             del target
 
+    #TODO: fix this avg dice and loss, make sure it prints correct numbers and is invariant to test batch size
     print("Test Loss is: " + str(test_loss/batch_size) + ", the Avg. Jaccard Coefficient is: " + str(avg_jaccard/batch_size) + " and the Avg. Dice is: " + str(avg_dice/batch_size))
    # loss_history.append(("Test", epoch, test_loss, avg_jaccard/length, avg_dice/length))
 
@@ -236,34 +248,27 @@ if __name__ == '__main__':
     args = parser.parse_args()
     use_cuda = not args.no_cuda and torch.cuda.is_available()
 
-    #print(use_cuda)
     torch.manual_seed(args.seed)
 
     device = torch.device("cuda" if use_cuda else "cpu")
-
-    kwargs = {'num_workers': 1, 'pin_memory': True} if use_cuda else {}
 
     batch_size = 1
     test_batch_size = 4
     epochs = 2000
     load_model = False
+    #TODO: change folder name to match model, etc.
     model_path = "densenetpbr_t1.tar"
     e_count = 1
     train_loader = dl.loadTrain() #minibatch_init(dl.loadTrain(), batch_size)
     test_loader = dl.loadTest()  #minibatch_init(dl.loadTest(), test_batch_size)
-    lr = 0.5
+    lr = 0.1
     momentum = 0.9
-    #loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(10)).to(device)
-    loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(0.1)).to(device)
+    #TODO: try uninverted bitmap
+    #loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(10)).to(device) # for regular bitmap
+    loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(0.1)).to(device) # for inverted bitmap
 
-    workers = 1
-    ngpu = 1
     model = dnet.DensePBR(denseNetLayers=[4, 4])
     optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum)
-
-    # not doing this on our machines
-    #if torch.cuda.device_count() > 1:
-    #    model = nn.DataParallel(model)
 
     model.to(device)
 
@@ -277,6 +282,12 @@ if __name__ == '__main__':
         loss_history = checkpoint['loss_history']
 
    # try:
+
+   #TODO: print target image at start
+    #TODO: add test_print_rate - how often to print SAME target image 
+    #TODO: print graph of train + validation loss every test_print_rate epochs
+    #      preferrably without making a new window every time
+    #       definitely so that it does not stop the script (matplotlib does this by default)
     for epoch in range(1, epochs+1):#epochs+1):
         e_count = epoch #Increase epoch count outside of loop.
         train(args, model, loss, device, minibatch_init(train_loader, batch_size), optimizer, batch_size, epoch)
