@@ -260,7 +260,7 @@ if __name__ == '__main__':
     model_path = "densenetpbr_t1.tar"
     e_count = 1
     train_loader = dl.loadTrain() #minibatch_init(dl.loadTrain(), batch_size)
-    test_loader = dl.loadTest()  #minibatch_init(dl.loadTest(), test_batch_size)
+    test_loader = minibatch_init(dl.loadTest())  #minibatch_init(dl.loadTest(), test_batch_size)
     lr = 0.1
     momentum = 0.9
     #TODO: try uninverted bitmap
@@ -291,7 +291,7 @@ if __name__ == '__main__':
     for epoch in range(1, epochs+1):#epochs+1):
         e_count = epoch #Increase epoch count outside of loop.
         train(args, model, loss, device, minibatch_init(train_loader, batch_size), optimizer, batch_size, epoch)
-        #test(args, model, loss, device, minibatch_init(test_loader, test_batch_size), test_batch_size, epoch)
+        #test(args, model, loss, device, test_loader, test_batch_size, epoch)
         #save(e_count, model, optimizer, l, model_path, load_model)
         #if torch.cuda.is_available():
         #    torch.cuda.empty_cache()
