@@ -16,6 +16,7 @@ import numpy as np
 import sys
 import data_loader as dl
 import DenseNet as dnet
+import matplotlib.pyplot as plt
 
 torch.set_printoptions(edgeitems=350)
 
@@ -25,7 +26,8 @@ TODO:
     test uncommenting cache
 '''
 loss_history = []
-
+l_t = []
+l_v = []
 def smoothL1(x):
     '''
     Smooth_L1(x) = {0.5x^2     | abs(x) < 1;
@@ -81,8 +83,13 @@ def jaccard(pred, target):
     '''
     J(A, B) = AnB/AuB
     '''
-    AnB = (torch.round(pred).long() & target.long()).view(-1).sum().float()
-    return (AnB/(torch.round(pred).long().view(-1).sum()+target.view(-1).sum().long()-AnB).float())
+    pred = torch.round(pred) == 0
+    target = target == 0
+
+    #AnB = (torch.round(pred).long() & target.long()).view(-1).sum().float()
+    #return (AnB/(torch.round(pred).long().view(-1).sum()+target.view(-1).sum().long()-AnB).float())
+    AnB = (pred & target).view(-1).sum().float()
+    return (AnB/(pred.long().view(-1).sum()+target.view(-1).sum().long()-AnB).float())
 
 def dice(pred, target):
     '''
@@ -104,8 +111,11 @@ def show_img(img):
 
 def train(args, model, l, device, train_loader, optimizer, batch_size, epoch, print_rate=5):
     global loss_history
+    global l_t
+
+    print(len(train_loader)*batch_size)
     model.train()
-    avg_jaccard = 0
+    #avg_jaccard = 0
     avg_dice = 0
     train_loss = 0
 
@@ -117,26 +127,23 @@ def train(args, model, l, device, train_loader, optimizer, batch_size, epoch, pr
 
         output = model(data)
         loss = l(output[0], target) #output[0] is segmentation prediction
-        train_loss += loss/len(train_loader)
-        avg_jaccard = jaccard(torch.sigmoid(output[0]).detach(), target).item()
-        avg_dice = dice(torch.sigmoid(output[0]).detach(), target).item()
+        train_loss += loss
+        #avg_jaccard += jaccard(torch.sigmoid(output[0]).detach(), target).item()
+        avg_dice += dice(torch.sigmoid(output[0]).detach(), target).item()
        # loss_history.append(("Train", epoch, loss, avg_jaccard/(batch_idx+1), avg_dice/(batch_idx+1)))
+
+        if epoch % 100 == 0 and batch_idx == 0:
+            show_img(output[0])
 
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        
-        #TODO: track Dice average
-        #if batch_idx % args.log_interval == 0:
-        #    print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-        #        epoch, (batch_idx+1) * len(data), 20,
-        #        100. * (batch_idx+1) / len(train_loader), loss.item()))
-        #    print("Avg. Jaccard Coefficient: " + str(avg_jaccard/batch_size) + " and Avg. Dice: " + str(avg_dice/batch_size))
 
     if epoch % print_rate == 0:
-        print('Train loss at epoch %s:' % epoch, str(float(train_loss.data)))
-        #TODO: print Dice average for training data
+        print('Train loss at epoch %s:' % epoch, str(train_loss.detach().item()/len(train_loader))
+             + " Dice: " + str(avg_dice/len(train_loader)))
 
+    l_t.append(train_loss.detach().item()/len(train_loader))
 
     if epoch % 200 == 0:
         show_img(output[0])
@@ -149,43 +156,47 @@ def train(args, model, l, device, train_loader, optimizer, batch_size, epoch, pr
     #if torch.cuda.is_available():
     #    torch.cuda.empty_cache()
 
-    del avg_jaccard
+    #del avg_jaccard
     del avg_dice
     del train_loader
 
-def test(args, model, l, device, test_loader, batch_size, epoch):
+def test(args, model, l, device, test_loader, batch_size, epoch, print_rate=10):
     #if torch.cuda.is_available():
     #    torch.cuda.empty_cache()
-
+    global l_v
     model.eval()
 
     test_loss = 0
-    avg_jaccard = 0
+    #avg_jaccard = 0
     avg_dice = 0
 
     with torch.no_grad():
-        for pack in test_loader:
+        for batch_idx, pack in enumerate(test_loader):
             pack = restructure(pack)
             data, target = pack[0].to(device), pack[1].to(device)
 
             output = model(data)
 
             test_loss += l(output[0].detach(), target.float()).detach().item() # sum up batch loss
-            avg_jaccard += jaccard(torch.sigmoid(output[0]).detach(), target).item()#across minibatch
+            #avg_jaccard += jaccard(torch.sigmoid(output[0]).detach(), target).item()#across minibatch
             avg_dice += dice(torch.sigmoid(output[0]).detach(), target).item()
 
             #TODO: print SAME image every
-            #show_img(output[0])
+            if batch_idx == 0 and epoch%print_rate==0:
+                show_img(output[0])
 
             del output
             del data
             del target
 
     #TODO: fix this avg dice and loss, make sure it prints correct numbers and is invariant to test batch size
-    print("Test Loss is: " + str(test_loss/batch_size) + ", the Avg. Jaccard Coefficient is: " + str(avg_jaccard/batch_size) + " and the Avg. Dice is: " + str(avg_dice/batch_size))
+    if epoch%print_rate==0 or epoch == 1:
+        print("Test Loss is: " + str(test_loss/len(test_loader)) + " and the Avg. Dice is: " + str(avg_dice/len(test_loader)))
+    
+    l_v.append(test_loss/len(test_loader))
    # loss_history.append(("Test", epoch, test_loss, avg_jaccard/length, avg_dice/length))
 
-    del avg_jaccard
+    #del avg_jaccard
     del avg_dice
     del test_loss
     del test_loader
@@ -212,16 +223,32 @@ def save(epoch, model, optimizer, loss, PATH, load_model):
     lh = []
     if load_model: #If cumulative loss_history already exists, extend it with the current one.
         lh = torch.load(PATH)["loss_history"].extend(loss_history)
-    else: #Otherwise define it as the loss_history of first training session.
-        lh = loss_history
+    else: #Otherwise define it as the loss_history of fprint_rate*2==0 irst training session.
+        lh = loss_historyprint_rate*2==0 
     torch.save({
             'epoch': epoch,
-            'model_state_dict': model.state_dict(),
+            'model_state': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
             'loss': loss,
             'loss_history': lh,
             }, PATH)
     loss_history = []
+
+def plot_graph(var_list):
+    for var in var_list:
+        var = np.array(var)
+        plt.plot(var)
+    plt.show()
+
+def exp_lr_decay(optimizer, epoch, lr_decay=0.1, lr_decay_epoch=7, threshold = 0.0001):
+    if epoch %lr_decay_epoch:
+        return optimizer
+    for param_group in optimizer.param_groups:
+        if param_group['lr'] <= threshold:
+            return optimizery
+        param_group['lr'] *= lr_decay
+        print("Learning rate is now:print(len(train_loader)) " + str(param_group['lr']))
+    return optimizer
 
 #Main function
 if __name__ == '__main__':
@@ -260,14 +287,14 @@ if __name__ == '__main__':
     model_path = "densenetpbr_t1.tar"
     e_count = 1
     train_loader = dl.loadTrain() #minibatch_init(dl.loadTrain(), batch_size)
-    test_loader = minibatch_init(dl.loadTest())  #minibatch_init(dl.loadTest(), test_batch_size)
-    lr = 0.1
+    test_loader = minibatch_init(dl.loadTest(), test_batch_size)  #minibatch_init(dl.loadTest(), test_batch_size)
+    lr = 1
     momentum = 0.9
     #TODO: try uninverted bitmap
     #loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(10)).to(device) # for regular bitmap
     loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(0.1)).to(device) # for inverted bitmap
 
-    model = dnet.DensePBR(denseNetLayers=[4, 4])
+    model = dnet.DensePBR(denseNetLayers=[4, 4, 4])
     optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum)
 
     model.to(device)
@@ -283,15 +310,18 @@ if __name__ == '__main__':
 
    # try:
 
-   #TODO: print target image at start
+    #TODO: print target image at start
     #TODO: add test_print_rate - how often to print SAME target image 
     #TODO: print graph of train + validation loss every test_print_rate epochs
     #      preferrably without making a new window every time
     #       definitely so that it does not stop the script (matplotlib does this by default)
     for epoch in range(1, epochs+1):#epochs+1):
         e_count = epoch #Increase epoch count outside of loop.
+        optimizer = exp_lr_decay(optimizer, epoch, lr_decay_epoch=30)
         train(args, model, loss, device, minibatch_init(train_loader, batch_size), optimizer, batch_size, epoch)
-        #test(args, model, loss, device, test_loader, test_batch_size, epoch)
+        test(args, model, loss, device, test_loader, test_batch_size, epoch)
+        if epoch % 100 == 0:
+            plot_graph([l_t, l_v])
         #save(e_count, model, optimizer, l, model_path, load_model)
         #if torch.cuda.is_available():
         #    torch.cuda.empty_cache()
@@ -299,7 +329,7 @@ if __name__ == '__main__':
     if (args.save_model):
         save(e_count, model, optimizer, loss, model_path, load_model)
         print("Saved model!")
-    # except:
+    # except:augment
 
      #    print("Saving the current model)
       #   save(e_count, model, optimizer, l, model_path, load_model)
