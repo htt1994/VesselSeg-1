@@ -103,12 +103,35 @@ def restructure(pack):
     return torch.stack(d[0]).permute(0, 3, 1, 2).float(), torch.stack(d[1]).float().unsqueeze(1)
     #We apply .unsqueeze(1) to target to turn (N,W,H) to (N, C, W, H) where C=1 (bit map), to match output/data shape.
 
+#SHOW IMG WITH RGB VALUES BETWEEN [0, 255]
 def show_img(img):
     if use_cuda:
         img = img.cpu()
     img = Image.fromarray(torch.Tensor.numpy(img.detach())[0][0], 'I')
     img.show()
 
+#SHOW IMG WITH RGB VALUES BETWEEN [0, 11]
+def show_img_mult255(img):
+    if use_cuda:
+        img = img.cpu()
+    img = np.multiply(img, 255).astype('uint8')
+    img = Image.fromarray(img, 'RGB')
+    img.show()
+
+### DATA AUGMENTATION FUNCTIONS
+def brightness_change(img_arr, factor):
+    return np.clip(np.multiply(img_arr, factor), 0.0, 1.0)
+
+def contrast_change(img_arr, factor):
+    return np.clip(0.5 + np.multiply((img_arr-0.5), factor), 0.0, 1.0)
+
+def random_contrast_brightness(img_arr):
+    #DRAW FROM A NORMAL DISTRIBUTION THE CHANGE FACTORS
+    c_factor = np.random.normal(1, 0.15)
+    b_factor = np.random.normal(1, 0.2)
+    return contrast_change(brightness_change(img_arr, b_factor), c_factor)
+
+### NETWORK TRAINING FUNCTIONS
 def train(args, model, l, device, train_loader, optimizer, batch_size, epoch, print_rate=5):
     global loss_history
     global l_t
@@ -125,6 +148,11 @@ def train(args, model, l, device, train_loader, optimizer, batch_size, epoch, pr
 
         data, target = Variable(pack[0].to(device)), Variable(pack[1].to(device))
 
+        #RANDOMIZE THE CONTRAST AND BRIGHTNESS OF IMGS IN THE BATCH
+        for i in data:
+            i = random_contrast_brightness(i)
+
+        #OUTPUT DATA
         output = model(data)
         loss = l(output[0], target) #output[0] is segmentation prediction
         train_loss += loss
@@ -192,7 +220,7 @@ def test(args, model, l, device, test_loader, batch_size, epoch, print_rate=10):
     #TODO: fix this avg dice and loss, make sure it prints correct numbers and is invariant to test batch size
     if epoch%print_rate==0 or epoch == 1:
         print("Test Loss is: " + str(test_loss/len(test_loader)) + " and the Avg. Dice is: " + str(avg_dice/len(test_loader)))
-    
+
     l_v.append(test_loss/len(test_loader))
    # loss_history.append(("Test", epoch, test_loss, avg_jaccard/length, avg_dice/length))
 
@@ -224,7 +252,7 @@ def save(epoch, model, optimizer, loss, PATH, load_model):
     if load_model: #If cumulative loss_history already exists, extend it with the current one.
         lh = torch.load(PATH)["loss_history"].extend(loss_history)
     else: #Otherwise define it as the loss_history of fprint_rate*2==0 irst training session.
-        lh = loss_historyprint_rate*2==0 
+        lh = loss_historyprint_rate*2==0
     torch.save({
             'epoch': epoch,
             'model_state': model.state_dict(),
@@ -249,6 +277,7 @@ def exp_lr_decay(optimizer, epoch, lr_decay=0.1, lr_decay_epoch=7, threshold = 0
         param_group['lr'] *= lr_decay
         print("Learning rate is now:print(len(train_loader)) " + str(param_group['lr']))
     return optimizer
+
 
 #Main function
 if __name__ == '__main__':
@@ -311,7 +340,7 @@ if __name__ == '__main__':
    # try:
 
     #TODO: print target image at start
-    #TODO: add test_print_rate - how often to print SAME target image 
+    #TODO: add test_print_rate - how often to print SAME target image
     #TODO: print graph of train + validation loss every test_print_rate epochs
     #      preferrably without making a new window every time
     #       definitely so that it does not stop the script (matplotlib does this by default)
