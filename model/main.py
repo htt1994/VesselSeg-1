@@ -15,7 +15,7 @@ import torchvision.utils as vutils
 import numpy as np
 import sys
 import data_loader as dl
-import DenseNet as dnet
+import densenet as dnet
 import matplotlib.pyplot as plt
 
 torch.set_printoptions(edgeitems=350)
@@ -323,7 +323,7 @@ if __name__ == '__main__':
     #loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(10)).to(device) # for regular bitmap
     loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(0.1)).to(device) # for inverted bitmap
 
-    model = dnet.DensePBR(denseNetLayers=[4, 4, 4])
+    model = dnet.DensePBR(denseNetLayers=[4,4,4])
     optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum)
 
     model.to(device)
@@ -338,15 +338,9 @@ if __name__ == '__main__':
         loss_history = checkpoint['loss_history']
 
    # try:
-
-    #TODO: print target image at start
-    #TODO: add test_print_rate - how often to print SAME target image
-    #TODO: print graph of train + validation loss every test_print_rate epochs
-    #      preferrably without making a new window every time
-    #       definitely so that it does not stop the script (matplotlib does this by default)
     for epoch in range(1, epochs+1):#epochs+1):
         e_count = epoch #Increase epoch count outside of loop.
-        optimizer = exp_lr_decay(optimizer, epoch, lr_decay_epoch=30)
+        optimizer = exp_lr_decay(optimizer, epoch, lr_decay_epoch=100)
         train(args, model, loss, device, minibatch_init(train_loader, batch_size), optimizer, batch_size, epoch)
         test(args, model, loss, device, test_loader, test_batch_size, epoch)
         if epoch % 100 == 0:

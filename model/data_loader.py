@@ -16,7 +16,7 @@ def img_to_bitmap(x):
 
 def transform(data, labels):
     methods = [Image.FLIP_LEFT_RIGHT, Image.FLIP_TOP_BOTTOM, Image.ROTATE_180, Image.TRANSPOSE]
-    
+
     x = random.randrange(0, len(methods))
     data.show()
     data.transpose(methods[x]).show()
@@ -39,7 +39,7 @@ def loadData(folder):
     for seg in os.listdir(folder+"/manual"):
         if seg.endswith(".png"):
             image = Image.open(folder+'/manual/'+seg)
-            np_seg = (np.array(image) == 0).astype(long) * 255
+            np_seg = (np.array(image) == 0).astype('long') * 255
             #np_seg = ((np.array(image) == 0) == 0).astype(long) * 255
             #np_seg = np.ones(np_seg.shape) - np_seg #TODO: remove
             labels.append(torch.tensor(img_to_bitmap(np_seg)))
@@ -54,7 +54,7 @@ def loadData(folder):
     del data_img
     del seg_img
 
-    return data, labels 
+    return data, labels
 def loadTrain(dataPath=path):
     return loadData(dataPath + "/training" )
 
