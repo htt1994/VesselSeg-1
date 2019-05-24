@@ -22,8 +22,8 @@ torch.set_printoptions(edgeitems=350)
 
 '''
 TODO:
-    1. Correct L_tot() so its minibatch training compatible.
-    test uncommenting cache
+    1. IMPLEMENT IoU EVALUATION
+    2. IMPLEMENT COSINE AND POLY LR DECAY
 '''
 loss_history = []
 l_t = []
@@ -79,6 +79,8 @@ def L_tot(p_set, p_ground, t_set, t_ground, cls_pred, cls_ground, phi, alpha, be
 
     return phi*Lseg + alpha*Lreg, + beta*Lcls
 
+
+#### EVALUATION METRICS
 def jaccard(pred, target):
     '''
     J(A, B) = AnB/AuB
@@ -89,7 +91,7 @@ def jaccard(pred, target):
     #AnB = (torch.round(pred).long() & target.long()).view(-1).sum().float()
     #return (AnB/(torch.round(pred).long().view(-1).sum()+target.view(-1).sum().long()-AnB).float())
     AnB = (pred & target).view(-1).sum().float()
-    return (AnB/(pred.long().view(-1).sum()+target.view(-1).sum().long()-AnB).float())
+    return (AnB/(pred.long().view(-1).sum()+target.view(-1).sum().long()-AnB).float()).item()
 
 def dice(pred, target):
     '''
@@ -97,6 +99,18 @@ def dice(pred, target):
     '''
     j = jaccard(pred, target)
     return 2*j/(j+1)
+
+
+def IoU(pred, target):
+    #### INVERT THE TENSORS FIRST SINCE WE INVERTED THE TARGET BIT MAP.
+    pred = torch.round(pred) == 0
+    target = target == 0
+
+    truePos = (pred&target).view(-1).sum().float() #pred & target
+    falsePos =  (pred & (target==0)).view(-1).sum().float() #pred & (not target)
+    falseNegative = ((pred == 0) & target).view(-1).sum().float()  #(not pred) & target
+    return (truePos/(truePos+falsePos+falseNegative)).item()
+
 
 def restructure(pack):
     d = list(zip(*pack))
@@ -118,6 +132,7 @@ def show_img_mult255(img):
     img = Image.fromarray(img, 'RGB')
     img.show()
 
+
 ### DATA AUGMENTATION FUNCTIONS
 def brightness_change(img_arr, factor):
     return np.clip(np.multiply(img_arr, factor), 0.0, 1.0)
@@ -130,6 +145,7 @@ def random_contrast_brightness(img_arr):
     c_factor = np.random.normal(1, 0.15)
     b_factor = np.random.normal(1, 0.2)
     return contrast_change(brightness_change(img_arr, b_factor), c_factor)
+
 
 ### NETWORK TRAINING FUNCTIONS
 def train(args, model, l, device, train_loader, optimizer, batch_size, epoch, print_rate=5):
@@ -268,13 +284,18 @@ def plot_graph(var_list):
         plt.plot(var)
     plt.show()
 
-def exp_lr_decay(optimizer, epoch, lr_decay=0.1, lr_decay_epoch=7, threshold = 0.0001):
+def lr_decay(optimizer, epoch, lr_decay=0.1, lr_decay_epoch=7, threshold = 0.0001, type="EXP"):
     if epoch %lr_decay_epoch:
         return optimizer
     for param_group in optimizer.param_groups:
         if param_group['lr'] <= threshold:
             return optimizery
-        param_group['lr'] *= lr_decay
+        if type=="EXP":
+            param_group['lr'] *= lr_decay
+        elif type=="COS":
+            return optimizer #ADD COSINE DECAY
+        elif type=="POLY":
+            return optimizer #ADD POLYNOMIAL DECAY
         print("Learning rate is now:print(len(train_loader)) " + str(param_group['lr']))
     return optimizer
 
@@ -340,7 +361,7 @@ if __name__ == '__main__':
    # try:
     for epoch in range(1, epochs+1):#epochs+1):
         e_count = epoch #Increase epoch count outside of loop.
-        optimizer = exp_lr_decay(optimizer, epoch, lr_decay_epoch=100)
+        optimizer = lr_decay(optimizer, epoch, lr_decay_epoch=100)
         train(args, model, loss, device, minibatch_init(train_loader, batch_size), optimizer, batch_size, epoch)
         test(args, model, loss, device, test_loader, test_batch_size, epoch)
         if epoch % 100 == 0:
