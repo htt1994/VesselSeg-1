@@ -165,8 +165,9 @@ class DenseNet(nn.Module):
         self.in_trans_chs = [] #even numbers: {c0, c2, c4, ...}
         self.in_block_chs = [] #odd numbers:  {c1, c3, c5, ...}
 
-        #if len(self.in_trans_chs) == 0:
-        #    self.in_trans_chs.append(3)
+        if len(self.in_trans_chs) == 0: #Also concatenate the feature map outputted from the initial convolution.
+            self.in_trans_chs.append(self.channels)
+
         if len(self.in_block_chs) == 0:
             self.in_block_chs.append(self.channels)
 
@@ -217,12 +218,13 @@ class DenseNet(nn.Module):
         out = self.bn0(input)
         #self.outputs.append(out.permute(1,0,2,3)) #Normalize first, before propogating it into following transition blocks.
         out = self.conv1(out)
+        self.outputs.append(F.interpolate(out, size=in_dims, model="nearest").permute(1,0,2,3))
 
         for i, func in enumerate(self.seq):
-            if i%2 == 0: #if it is a denseblock transformation
+            if i%2 == 0: #DenseBlock transformation
                 out = func(out)
                 self.outputs.append(F.interpolate(out, size=in_dims, mode="nearest").permute(1,0,2,3)) #Upsample the output to the correct input dims so we can concat before transition block.
-            else:
+            else: #Transition Transformation
                 out = func(torch.cat(self.outputs).permute(1,0,2,3))
         val = torch.cat(self.outputs).permute(1,0,2,3) #Restore to (N, C, H, W)
         self.outputs = []
