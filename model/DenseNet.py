@@ -14,7 +14,7 @@ one for segmentation, and one for classification, both share the same convolutio
 feature map yielded by the DenseNet backbone.
 
 Developed by:
-    Jesse Sun
+    Jesse Sunc
     Osvald Nitski
 
 Dr. Bo Wang's AI Lab, University Health Network.

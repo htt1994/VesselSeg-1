@@ -22,8 +22,7 @@ torch.set_printoptions(edgeitems=350)
 
 '''
 TODO:
-    1. IMPLEMENT IoU EVALUATION
-    2. IMPLEMENT COSINE AND POLY LR DECAY
+    1. IMPLEMENT COSINE AND POLY LR DECAY
 '''
 loss_history = []
 l_t = []
@@ -344,10 +343,14 @@ if __name__ == '__main__':
     #loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(10)).to(device) # for regular bitmap
     loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(0.1)).to(device) # for inverted bitmap
 
-    model = dnet.DensePBR(denseNetLayers=[4,4,4])
+    model = dnet.DenseNetPBR(denseNetLayers=[4,4,4,4])
     optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum)
 
     model.to(device)
+
+    ### NUM OF PARAMETERS OF model
+    pytorch_total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print("TOTAL NUM OF PARAMETERS: " + str(pytorch_total_params))
 
     #Load Model if true:
     if load_model:

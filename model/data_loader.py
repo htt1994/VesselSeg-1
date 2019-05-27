@@ -5,8 +5,8 @@ import random
 from PIL import Image
 
 #CHANGE THIS ACCORDINGLY TO YOUR OWN FILE LOCATION
-#path = '/Users/Jesse/Desktop/DenseNetPBR/data/DRIVE700x605'
-path = '/home/wanglab/Osvald/Imaging/DenseNetPBR/data/DRIVE700x605'
+path = '/Users/Jesse/Desktop/DenseNetPBR/data/DRIVE700x605'
+#path = '/home/wanglab/Osvald/Imaging/DenseNetPBR/data/DRIVE700x605'
 
 def normalize(x, norm): #0 = -128, divide 128. 1 = /255
     return (x.astype(float)-128)/128  if norm == 0 else x.astype(float)/255
@@ -18,8 +18,8 @@ def transform(data, labels):
     methods = [Image.FLIP_LEFT_RIGHT, Image.FLIP_TOP_BOTTOM, Image.ROTATE_180, Image.TRANSPOSE]
 
     x = random.randrange(0, len(methods))
-    data.show()
-    data.transpose(methods[x]).show()
+    #data.show()
+    data.transpose(methods[x])
     return data.transpose(methods[x]), labels.transpose(methods[x])
 
 def loadData(folder):
