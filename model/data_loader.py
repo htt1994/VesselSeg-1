@@ -22,7 +22,7 @@ def transform(data, labels):
     data.transpose(methods[x])
     return data.transpose(methods[x]), labels.transpose(methods[x])
 
-def loadData(folder):
+def loadData(folder, multiplier=3): #TOTAL NUMBER OF DATA PER EPOCH = Multiplier*OriginalLength.
     data = []
     labels = []
 
@@ -45,16 +45,18 @@ def loadData(folder):
             labels.append(torch.tensor(img_to_bitmap(np_seg)))
             seg_img.append(image)
 
-    for i in range(len(data_img)):
-        img_d, img_s = transform(data_img[i], seg_img[i])
-        np_img_d, np_img_s = np.array(img_d), np.array(img_s)
-        data.append(torch.tensor(normalize(np_img_d, 1)))
-        labels.append(torch.tensor(img_to_bitmap(np_img_s)))
+    for x in range(multiplier-1):
+        for i in range(len(data_img)):
+            img_d, img_s = transform(data_img[i], seg_img[i])
+            np_img_d, np_img_s = np.array(img_d), np.array(img_s)
+            data.append(torch.tensor(normalize(np_img_d, 1)))
+            labels.append(torch.tensor(img_to_bitmap(np_img_s)))
 
     del data_img
     del seg_img
 
     return data, labels
+
 def loadTrain(dataPath=path):
     return loadData(dataPath + "/training" )
 

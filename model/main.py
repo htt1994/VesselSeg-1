@@ -282,8 +282,8 @@ def plot_graph(var_list):
         plt.plot(var)
     plt.show()
 
-def lr_decay(optimizer, epoch, lr_decay=0.1, lr_decay_epoch=7, threshold = 0.0001, type="EXP"):
-    if epoch %lr_decay_epoch:
+def lr_decay(optimizer, epoch, max_epochs, lr_0=0.01, lr_decay=0.1, lr_decay_epoch=50, threshold=0.0001, type="EXP"):
+    if epoch %lr_decay_epoch and type=="EXP":
         return optimizer
     for param_group in optimizer.param_groups:
         if param_group['lr'] <= threshold:
@@ -291,9 +291,10 @@ def lr_decay(optimizer, epoch, lr_decay=0.1, lr_decay_epoch=7, threshold = 0.000
         if type=="EXP":
             param_group['lr'] *= lr_decay
         elif type=="COS":
-            return optimizer #ADD COSINE DECAY
+            param_group['lr'] = 0.5*(1+math.cos(math.pi*epoch/max_epochs))*lr_0
         elif type=="POLY":
-            return optimizer #ADD POLYNOMIAL DECAY
+            BETA = 0.9 #Hyperparameter, change here
+            param_group['lr'] = lr_0*((1-epoch/max_epochs)**BETA)
         print("Learning rate is now:print(len(train_loader)) " + str(param_group['lr']))
     return optimizer
 
@@ -327,8 +328,8 @@ if __name__ == '__main__':
 
     device = torch.device("cuda" if use_cuda else "cpu")
 
-    batch_size = 1
-    test_batch_size = 4
+    batch_size = 4
+    test_batch_size = 1
     epochs = 2000
     load_model = False
     #TODO: change folder name to match model, etc.
@@ -363,7 +364,7 @@ if __name__ == '__main__':
    # try:
     for epoch in range(1, epochs+1):#epochs+1):
         e_count = epoch #Increase epoch count outside of loop.
-        optimizer = lr_decay(optimizer, epoch, lr_decay_epoch=100)
+        optimizer = lr_decay(optimizer, epoch, lr_0=lr, max_epochs=epochs, lr_decay_epoch=100)
         train(args, model, loss, device, minibatch_init(train_loader, batch_size), optimizer, batch_size, epoch)
         test(args, model, loss, device, test_loader, test_batch_size, epoch)
         if epoch % 100 == 0:
