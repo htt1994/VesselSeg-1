@@ -154,7 +154,7 @@ class DenseNet(nn.Module):
         self.n = layers
         self.instantiated = False
 
-        self.bn0 = nn.BatchNorm2d(3) #Normalizes input w.r.t. minibatch
+        #self.bn0 = nn.BatchNorm2d(3) #Normalizes input w.r.t. minibatch
         self.conv1 = nn.Conv2d(3, self.channels, kernel_size=3, stride=2,
                                padding=1, bias=False)
 
