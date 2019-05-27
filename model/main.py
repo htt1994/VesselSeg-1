@@ -145,7 +145,6 @@ def random_contrast_brightness(img_arr):
     b_factor = np.random.normal(1, 0.2)
     return contrast_change(brightness_change(img_arr, b_factor), c_factor)
 
-
 ### NETWORK TRAINING FUNCTIONS
 def train(args, model, l, device, train_loader, optimizer, batch_size, epoch, print_rate=5):
     global loss_history
