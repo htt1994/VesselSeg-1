@@ -179,6 +179,7 @@ class DenseNet(nn.Module):
         Add the blocks and transitions to the queue, depending on channels in and out which we use
         self.in_trans_chs and self.in_block_chs to help us with.
         '''
+
         for i in range(len(self.n)):
             self.seq.append(DenseBlock(self.n[i], self.in_block_chs[i], growth_rate=growth_rate, dropRate=dropRate))
             self.channels = int(self.in_block_chs[i]+self.n[i]*growth_rate)
@@ -225,7 +226,7 @@ class DenseNet(nn.Module):
         self.outputs.append(F.interpolate(out, size=in_dims, mode="nearest").permute(1,0,2,3))
 
         #### JUST ADDED THIS LINE FOR EXPERIMENTATION ####
-        out = maxpool1(out)
+        out = self.maxpool1(out)
         ##################################################
 
         for i, func in enumerate(self.seq):

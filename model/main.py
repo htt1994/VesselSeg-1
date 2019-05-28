@@ -367,22 +367,22 @@ if __name__ == '__main__':
         l_t = loss_history[0]
         l_v = loss_history[1]
 
-    try:
-        for epoch in range(1, epochs+1):#epochs+1):
-            e_count = epoch #Increase epoch count outside of loop.
-            optimizer = lr_decay(optimizer, epoch, lr_0=lr, max_epochs=epochs, lr_decay_epoch=100, type="COS")
-            train(args, model, loss, device, minibatch_init(train_loader, batch_size), optimizer, batch_size, epoch)
-            test(args, model, loss, device, test_loader, test_batch_size, epoch)
-            if epoch % 100 == 0:
-                plot_graph([l_t, l_v])
-                save(e_count, model, optimizer, l, model_path, [l_t, l_v], load_model)
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
+    #try:
+    for epoch in range(1, epochs+1):#epochs+1):
+        e_count = epoch #Increase epoch count outside of loop.
+        optimizer = lr_decay(optimizer, epoch, lr_0=lr, max_epochs=epochs, lr_decay_epoch=100, type="COS")
+        train(args, model, loss, device, minibatch_init(train_loader, batch_size), optimizer, batch_size, epoch)
+        test(args, model, loss, device, test_loader, test_batch_size, epoch)
+        if epoch % 100 == 0:
+            plot_graph([l_t, l_v])
+            save(e_count, model, optimizer, l, model_path, [l_t, l_v], load_model)
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
-        if (args.save_model):
-            save(e_count, model, optimizer, loss, model_path, load_model)
-            print("Saved model!")
-
+    if (args.save_model):
+        save(e_count, model, optimizer, loss, model_path, load_model)
+        print("Saved model!")
+    '''
     except:
         saved = True
         print("Saving the current model")
@@ -394,3 +394,4 @@ if __name__ == '__main__':
 
         if saved == True:
             print("Saved the model!")
+    '''
