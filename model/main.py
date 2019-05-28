@@ -264,7 +264,8 @@ def minibatch_init(set, minibatch_size):
 def save(epoch, model, optimizer, loss, PATH, loss_history, load_model):
     lh = []
     if load_model: #If cumulative loss_history already exists, extend it with the current one.
-        lh = torch.load(PATH)["loss_history"].extend(loss_history)
+        lh = [torch.load(PATH)["loss_history"][0].extend(loss_history[0]),
+              torch.load(PATH)["loss_history"][1].extend(loss_history[1])]
     else: #Otherwise define it as the loss_history of first training session.
         lh = loss_history
     torch.save({
@@ -343,8 +344,8 @@ if __name__ == '__main__':
     lr = 0.1
     momentum = 0.9
     #TODO: try uninverted bitmap
-    #loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(10)).to(device) # for regular bitmap
-    loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(0.15)).to(device) # for inverted bitmap
+    loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(10)).to(device) # for regular bitmap
+    #loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(0.15)).to(device) # for inverted bitmap
 
     model = dnet.DensePBR(denseNetLayers=[4,4])
     optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum)
