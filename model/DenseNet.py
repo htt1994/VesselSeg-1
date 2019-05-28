@@ -126,10 +126,10 @@ class SegmentBranch(nn.Module):
     def __init__(self, f, hidden_seg):
         super(SegmentBranch, self).__init__()
         self.relu = nn.ReLU(inplace=True)
-        self.conv1x1 = nn.Conv2d(f, hidden_seg, kernel_size=1, stride=1, padding=0)
-        self.hidden = nn.Conv2d(hidden_seg, 1, kernel_size=1, stride=1, padding=0)
+        self.conv1x1 = nn.Conv2d(f, 1, kernel_size=1, stride=1, padding=0)
+        #self.hidden = nn.Conv2d(hidden_seg, 1, kernel_size=1, stride=1, padding=0)
     def forward(self, input):
-        return self.hidden(self.relu(self.conv1x1(input)))
+        return self.relu(self.conv1x1(input)) #self.hidden(self.relu(self.conv1x1(input)))
 
 class ClassifyBranch(nn.Module):
     '''
@@ -215,10 +215,10 @@ class DenseNet(nn.Module):
         #self.outputs.append(input.permute(1,0,2,3))
         in_dims = (input.shape[2], input.shape[3]) #To keep track of what to upsample the low resolution feature maps to.
 
-        out = self.bn0(input)
+        #out = self.bn0(input)
         #self.outputs.append(out.permute(1,0,2,3)) #Normalize first, before propogating it into following transition blocks.
-        out = self.conv1(out)
-        self.outputs.append(F.interpolate(out, size=in_dims, model="nearest").permute(1,0,2,3))
+        out = self.conv1(input)
+        self.outputs.append(F.interpolate(out, size=in_dims, mode="nearest").permute(1,0,2,3))
 
         for i, func in enumerate(self.seq):
             if i%2 == 0: #DenseBlock transformation

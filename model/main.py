@@ -10,14 +10,14 @@ import torch.distributed
 import torch.backends.cudnn as cudnn
 from torch.autograd import Variable
 import torch.optim as optim
-import torchvision.transforms as transforms
-import torchvision.utils as vutils
+#import torchvision.transforms as transforms
+#import torchvision.utils as vutils
 import numpy as np
 import sys
 import data_loader as dl
-import densenet as dnet
+import DenseNet as dnet
 import matplotlib.pyplot as plt
-
+import math
 torch.set_printoptions(edgeitems=350)
 
 '''
@@ -134,23 +134,24 @@ def show_img_mult255(img):
 
 ### DATA AUGMENTATION FUNCTIONS
 def brightness_change(img_arr, factor):
-    return np.clip(np.multiply(img_arr, factor), 0.0, 1.0)
+    return torch.clamp(torch.mul(img_arr, factor), 0.0, 1.0)
 
 def contrast_change(img_arr, factor):
-    return np.clip(0.5 + np.multiply((img_arr-0.5), factor), 0.0, 1.0)
+    return torch.clamp(0.5 + torch.mul((img_arr-0.5), factor), 0.0, 1.0)
 
 def random_contrast_brightness(img_arr):
     #DRAW FROM A NORMAL DISTRIBUTION THE CHANGE FACTORS
     c_factor = np.random.normal(1, 0.15)
     b_factor = np.random.normal(1, 0.2)
-    return contrast_change(brightness_change(img_arr, b_factor), c_factor)
+    img = contrast_change(brightness_change(img_arr, b_factor), c_factor)
+    return img #img.cuda() if torch.cuda.is_available() else img
 
 ### NETWORK TRAINING FUNCTIONS
 def train(args, model, l, device, train_loader, optimizer, batch_size, epoch, print_rate=5):
     global loss_history
     global l_t
 
-    print(len(train_loader)*batch_size)
+    #print(len(train_loader)*batch_size)
     model.train()
     #avg_jaccard = 0
     avg_dice = 0
@@ -171,7 +172,7 @@ def train(args, model, l, device, train_loader, optimizer, batch_size, epoch, pr
         loss = l(output[0], target) #output[0] is segmentation prediction
         train_loss += loss
         #avg_jaccard += jaccard(torch.sigmoid(output[0]).detach(), target).item()
-        avg_dice += dice(torch.sigmoid(output[0]).detach(), target).item()
+        avg_dice += dice(torch.sigmoid(output[0]).detach(), target)
        # loss_history.append(("Train", epoch, loss, avg_jaccard/(batch_idx+1), avg_dice/(batch_idx+1)))
 
         if epoch % 100 == 0 and batch_idx == 0:
@@ -221,7 +222,7 @@ def test(args, model, l, device, test_loader, batch_size, epoch, print_rate=10):
 
             test_loss += l(output[0].detach(), target.float()).detach().item() # sum up batch loss
             #avg_jaccard += jaccard(torch.sigmoid(output[0]).detach(), target).item()#across minibatch
-            avg_dice += dice(torch.sigmoid(output[0]).detach(), target).item()
+            avg_dice += dice(torch.sigmoid(output[0]).detach(), target)
 
             #TODO: print SAME image every
             if batch_idx == 0 and epoch%print_rate==0:
@@ -290,12 +291,15 @@ def lr_decay(optimizer, epoch, max_epochs, lr_0=0.01, lr_decay=0.1, lr_decay_epo
             return optimizery
         if type=="EXP":
             param_group['lr'] *= lr_decay
+            print("Learning rate is now: " + str(param_group['lr']))
         elif type=="COS":
             param_group['lr'] = 0.5*(1+math.cos(math.pi*epoch/max_epochs))*lr_0
+            if epoch%lr_decay_epoch == 0:
+                print("Learning rate is now: " + str(param_group['lr']))
         elif type=="POLY":
             BETA = 0.9 #Hyperparameter, change here
             param_group['lr'] = lr_0*((1-epoch/max_epochs)**BETA)
-        print("Learning rate is now:print(len(train_loader)) " + str(param_group['lr']))
+        
     return optimizer
 
 
@@ -329,7 +333,7 @@ if __name__ == '__main__':
     device = torch.device("cuda" if use_cuda else "cpu")
 
     batch_size = 4
-    test_batch_size = 1
+    test_batch_size = 4
     epochs = 2000
     load_model = False
     #TODO: change folder name to match model, etc.
@@ -337,13 +341,13 @@ if __name__ == '__main__':
     e_count = 1
     train_loader = dl.loadTrain() #minibatch_init(dl.loadTrain(), batch_size)
     test_loader = minibatch_init(dl.loadTest(), test_batch_size)  #minibatch_init(dl.loadTest(), test_batch_size)
-    lr = 1
+    lr = 0.1
     momentum = 0.9
     #TODO: try uninverted bitmap
     #loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(10)).to(device) # for regular bitmap
-    loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(0.1)).to(device) # for inverted bitmap
+    loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(0.15)).to(device) # for inverted bitmap
 
-    model = dnet.DenseNetPBR(denseNetLayers=[4,4,4,4])
+    model = dnet.DensePBR(denseNetLayers=[4,4])
     optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum)
 
     model.to(device)
@@ -364,7 +368,7 @@ if __name__ == '__main__':
    # try:
     for epoch in range(1, epochs+1):#epochs+1):
         e_count = epoch #Increase epoch count outside of loop.
-        optimizer = lr_decay(optimizer, epoch, lr_0=lr, max_epochs=epochs, lr_decay_epoch=100)
+        optimizer = lr_decay(optimizer, epoch, lr_0=lr, max_epochs=epochs, lr_decay_epoch=100, type="COS")
         train(args, model, loss, device, minibatch_init(train_loader, batch_size), optimizer, batch_size, epoch)
         test(args, model, loss, device, test_loader, test_batch_size, epoch)
         if epoch % 100 == 0:

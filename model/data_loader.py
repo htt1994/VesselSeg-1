@@ -5,7 +5,8 @@ import random
 from PIL import Image
 
 #CHANGE THIS ACCORDINGLY TO YOUR OWN FILE LOCATION
-path = '/Users/Jesse/Desktop/DenseNetPBR/data/DRIVE700x605'
+#path = '/Users/Jesse/Desktop/DenseNetPBR/data/DRIVE700x605'
+path = '/home/jessesun/Desktop/DenseNetPBR/data/DRIVE700x605'
 #path = '/home/wanglab/Osvald/Imaging/DenseNetPBR/data/DRIVE700x605'
 
 def normalize(x, norm): #0 = -128, divide 128. 1 = /255
@@ -22,7 +23,7 @@ def transform(data, labels):
     data.transpose(methods[x])
     return data.transpose(methods[x]), labels.transpose(methods[x])
 
-def loadData(folder, multiplier=3): #TOTAL NUMBER OF DATA PER EPOCH = Multiplier*OriginalLength.
+def loadData(folder, multiplier=1): #TOTAL NUMBER OF DATA PER EPOCH = Multiplier*OriginalLength.
     data = []
     labels = []
 
