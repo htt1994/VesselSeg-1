@@ -6,7 +6,7 @@ TODO:
     1. Come up with how no bbox outputted for a given layer will be represnted. w,h=0 or -1 or something else?
     2. Complete unnormalize function. Depends on how we normalize the outputs.
     3. Get new 3D RoI tensor to be fed into segmentation network.
-    
+
 '''
 
 def unnormalize(x):
