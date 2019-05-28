@@ -347,7 +347,7 @@ if __name__ == '__main__':
     loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(10)).to(device) # for regular bitmap
     #loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(0.15)).to(device) # for inverted bitmap
 
-    model = dnet.DensePBR(denseNetLayers=[4,4])
+    model = dnet.DensePBR(denseNetLayers=[3,2,2,2,2])
     optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum)
 
     model.to(device)
@@ -385,12 +385,12 @@ if __name__ == '__main__':
 
     except:
         saved = True
-        print("Saving the current model)
+        print("Saving the current model")
         try:
             save(e_count, model, optimizer, l, model_path, load_model)
         except:
             print("Error while saving model.")
             saved = False
 
-        if saved = True:
+        if saved == True:
             print("Saved the model!")

@@ -76,7 +76,7 @@ class TransitionBlock(nn.Sequential):
         if self.dropRate>0:
             self.add_module("Dropout", nn.Dropout(self.dropRate))
 
-        self.add_module("Max pool", nn.MaxPool2d(kernel_size=2))
+        self.add_module("Avg pool", nn.AvgPool2d(kernel_size=2))
 
 class DenseBlock(nn.Sequential):
     '''
@@ -158,6 +158,10 @@ class DenseNet(nn.Module):
         self.conv1 = nn.Conv2d(3, self.channels, kernel_size=3, stride=2,
                                padding=1, bias=False)
 
+        #### ADDED FOR EXPERIMENTATION ####
+        self.maxpool1 = nn.MaxPool2d(kernel_size=2)
+        ###################################
+
         self.seq = nn.ModuleList()
 
         self.outputs = []
@@ -219,6 +223,10 @@ class DenseNet(nn.Module):
         #self.outputs.append(out.permute(1,0,2,3)) #Normalize first, before propogating it into following transition blocks.
         out = self.conv1(input)
         self.outputs.append(F.interpolate(out, size=in_dims, mode="nearest").permute(1,0,2,3))
+
+        #### JUST ADDED THIS LINE FOR EXPERIMENTATION ####
+        out = maxpool1(out)
+        ##################################################
 
         for i, func in enumerate(self.seq):
             if i%2 == 0: #DenseBlock transformation
