@@ -15,15 +15,15 @@ def normalize(x, norm): #0 = -128, divide 128. 1 = /255
 def img_to_bitmap(x):
     return x/255
 
-def transform(data, labels):
+def transform(data, labels, index):
     methods = [Image.FLIP_LEFT_RIGHT, Image.FLIP_TOP_BOTTOM, Image.ROTATE_180, Image.TRANSPOSE]
 
-    x = random.randrange(0, len(methods))
+    #x = random.randrange(0, len(methods))
     #data.show()
-    data.transpose(methods[x])
-    return data.transpose(methods[x]), labels.transpose(methods[x])
+    #data.transpose(methods[x])
+    return data.transpose(methods[index]), labels.transpose(methods[index])
 
-def loadData(folder, multiplier=1): #TOTAL NUMBER OF DATA PER EPOCH = Multiplier*OriginalLength.
+def loadData(folder, multiplier=5): #TOTAL NUMBER OF DATA PER EPOCH = Multiplier*OriginalLength.
     data = []
     labels = []
 
@@ -48,7 +48,7 @@ def loadData(folder, multiplier=1): #TOTAL NUMBER OF DATA PER EPOCH = Multiplier
 
     for x in range(multiplier-1):
         for i in range(len(data_img)):
-            img_d, img_s = transform(data_img[i], seg_img[i])
+            img_d, img_s = transform(data_img[i], seg_img[i], x)
             np_img_d, np_img_s = np.array(img_d), np.array(img_s)
             data.append(torch.tensor(normalize(np_img_d, 1)))
             labels.append(torch.tensor(img_to_bitmap(np_img_s)))
