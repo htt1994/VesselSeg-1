@@ -31,7 +31,7 @@ class BottleneckBlock(nn.Module):
     After l layers, with growth rate k, this gives channel dims:
     (lxk) -> Bn,ReLU,Conv(1) -> (bn_sizexk) - > Bn,ReLU,Conv(3) -> (k)
     '''
-    def __init__(self, channels, out_channels, growth_rate, bn_size=4, dropRate=0):
+    def __init__(self, channels, out_channels, growth_rate, bn_size=4, dropRate=0.0):
         super(BottleneckBlock, self).__init__()
         inter_channels = bn_size * growth_rate # number of intermediary channels in bottleneck
 
@@ -66,7 +66,7 @@ class TransitionBlock(nn.Sequential):
     After l layers, with growth rate k, this gives channel dims:
     (lxk) -> Bn,ReLU,Conv(1) -> (4xk) - > Bn,ReLU,Conv(3) -> (k)
     '''
-    def __init__(self, channels, out_channels, dropRate=0):
+    def __init__(self, channels, out_channels, dropRate=0.0):
         super(TransitionBlock, self).__init__()
         self.dropRate = dropRate
         self.add_module("BN 1", nn.BatchNorm2d(channels))
@@ -90,7 +90,7 @@ class DenseBlock(nn.Sequential):
     After this block k new higher level feature channels will be added to the "cummulative knowledge"
     providing a total of (Lxk) feature channels at the L'th denseblock
     '''
-    def __init__(self, nb_layers, channels, growth_rate, bn_size=4, dropRate=0):
+    def __init__(self, nb_layers, channels, growth_rate, bn_size=4, dropRate=0.0):
         super(DenseBlock, self).__init__()
         for i in range(nb_layers):
             # Each layer, l, has input ko + k(l-1) channels and outputs k channels
@@ -148,7 +148,7 @@ class DenseNet(nn.Module):
     DenseNet variant implementation: CondenseNet
     Each DenseBlock output is also concatenated with priors before feeding into the following TransitionBlock.
     '''
-    def __init__(self, layers=[4,4,4,4], growth_rate=8, reduction=0.5, dropRate=0):
+    def __init__(self, layers=[4,4,4,4], growth_rate=8, reduction=0.5, dropRate=0.0):
         super(DenseNet, self).__init__()
         self.channels = 2 * growth_rate
         self.n = layers
@@ -243,7 +243,7 @@ class DensePBR(nn.Module):
     - Classification branch is a sequence of spatial pyramid pooling, yields fixed output size which is passed into FCs for disease classification.
 
     '''
-    def __init__(self, denseNetLayers=[4,4,4,4], hidden_cls=144, hidden_seg=64, num_classes=2, spp_layers=[1,2,4], segment=True, classify = False):
+    def __init__(self, denseNetLayers=[4,4,4,4], hidden_cls=144, hidden_seg=64, num_classes=2, spp_layers=[1,2,4], segment=True, classify = False, dropRate=0.0):
         super(DensePBR, self).__init__()
         self.seg = segment
         self.cls = classify
@@ -253,7 +253,7 @@ class DensePBR(nn.Module):
         self.prob_out = True
 
         # DenseNet
-        self.conv = DenseNet(layers=denseNetLayers)
+        self.conv = DenseNet(layers=denseNetLayers, dropRate=dropRate)
         self.channels = self.conv.condense_ch_final # retrieve channel dim from DenseNet class
         # Segment Branch
         self.segment = SegmentBranch(f=self.channels, hidden_seg=hidden_seg)

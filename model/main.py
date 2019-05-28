@@ -84,26 +84,26 @@ def jaccard(pred, target):
     '''
     J(A, B) = AnB/AuB
     '''
-    pred = torch.round(pred) == 0
-    target = target == 0
+    #pred = torch.round(pred) == 0
+    #target = target == 0
 
-    #AnB = (torch.round(pred).long() & target.long()).view(-1).sum().float()
-    #return (AnB/(torch.round(pred).long().view(-1).sum()+target.view(-1).sum().long()-AnB).float())
-    AnB = (pred & target).view(-1).sum().float()
-    return (AnB/(pred.long().view(-1).sum()+target.view(-1).sum().long()-AnB).float()).item()
+    AnB = (torch.round(pred).long() & target.long()).view(-1).sum().float()
+    return (AnB/(torch.round(pred).long().view(-1).sum()+target.view(-1).sum().long()-AnB).float())
+    #AnB = (pred & target).view(-1).sum().float()
+    #return (AnB/(pred.long().view(-1).sum()+target.view(-1).sum().long()-AnB).float()).item()
 
 def dice(pred, target):
     '''
     D(A, B) = 2(AnB)/(A + B)
     '''
-    j = jaccard(pred, target)
+    j = jaccard(torch.sigmoid(pred), target)
     return 2*j/(j+1)
 
 
 def IoU(pred, target):
     #### INVERT THE TENSORS FIRST SINCE WE INVERTED THE TARGET BIT MAP.
-    pred = torch.round(pred) == 0
-    target = target == 0
+    #pred = torch.round(pred) == 0
+    #target = target == 0
 
     truePos = (pred&target).view(-1).sum().float() #pred & target
     falsePos =  (pred & (target==0)).view(-1).sum().float() #pred & (not target)
@@ -172,7 +172,7 @@ def train(args, model, l, device, train_loader, optimizer, batch_size, epoch, pr
         loss = l(output[0], target) #output[0] is segmentation prediction
         train_loss += loss
         #avg_jaccard += jaccard(torch.sigmoid(output[0]).detach(), target).item()
-        avg_dice += dice(torch.sigmoid(output[0]).detach(), target)
+        avg_dice += dice(output[0].detach(), target)
        # loss_history.append(("Train", epoch, loss, avg_jaccard/(batch_idx+1), avg_dice/(batch_idx+1)))
 
         if epoch % 100 == 0 and batch_idx == 0:
@@ -261,13 +261,12 @@ def minibatch_init(set, minibatch_size):
             minibatch = []
     return set
 
-def save(epoch, model, optimizer, loss, PATH, load_model):
-    global loss_history
+def save(epoch, model, optimizer, loss, PATH, loss_history, load_model):
     lh = []
     if load_model: #If cumulative loss_history already exists, extend it with the current one.
         lh = torch.load(PATH)["loss_history"].extend(loss_history)
-    else: #Otherwise define it as the loss_history of fprint_rate*2==0 irst training session.
-        lh = loss_historyprint_rate*2==0
+    else: #Otherwise define it as the loss_history of first training session.
+        lh = loss_history
     torch.save({
             'epoch': epoch,
             'model_state': model.state_dict(),
@@ -299,7 +298,7 @@ def lr_decay(optimizer, epoch, max_epochs, lr_0=0.01, lr_decay=0.1, lr_decay_epo
         elif type=="POLY":
             BETA = 0.9 #Hyperparameter, change here
             param_group['lr'] = lr_0*((1-epoch/max_epochs)**BETA)
-        
+
     return optimizer
 
 
@@ -364,24 +363,33 @@ if __name__ == '__main__':
         epoch = checkpoint['epoch']
         loss = checkpoint['loss']
         loss_history = checkpoint['loss_history']
+        l_t = loss_history[0]
+        l_v = loss_history[1]
 
-   # try:
-    for epoch in range(1, epochs+1):#epochs+1):
-        e_count = epoch #Increase epoch count outside of loop.
-        optimizer = lr_decay(optimizer, epoch, lr_0=lr, max_epochs=epochs, lr_decay_epoch=100, type="COS")
-        train(args, model, loss, device, minibatch_init(train_loader, batch_size), optimizer, batch_size, epoch)
-        test(args, model, loss, device, test_loader, test_batch_size, epoch)
-        if epoch % 100 == 0:
-            plot_graph([l_t, l_v])
-        #save(e_count, model, optimizer, l, model_path, load_model)
-        #if torch.cuda.is_available():
-        #    torch.cuda.empty_cache()
+    try:
+        for epoch in range(1, epochs+1):#epochs+1):
+            e_count = epoch #Increase epoch count outside of loop.
+            optimizer = lr_decay(optimizer, epoch, lr_0=lr, max_epochs=epochs, lr_decay_epoch=100, type="COS")
+            train(args, model, loss, device, minibatch_init(train_loader, batch_size), optimizer, batch_size, epoch)
+            test(args, model, loss, device, test_loader, test_batch_size, epoch)
+            if epoch % 100 == 0:
+                plot_graph([l_t, l_v])
+                save(e_count, model, optimizer, l, model_path, [l_t, l_v], load_model)
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
 
-    if (args.save_model):
-        save(e_count, model, optimizer, loss, model_path, load_model)
-        print("Saved model!")
-    # except:augment
+        if (args.save_model):
+            save(e_count, model, optimizer, loss, model_path, load_model)
+            print("Saved model!")
 
-     #    print("Saving the current model)
-      #   save(e_count, model, optimizer, l, model_path, load_model)
-       #  print("Saved the model!")
+    except:
+        saved = True
+        print("Saving the current model)
+        try:
+            save(e_count, model, optimizer, l, model_path, load_model)
+        except:
+            print("Error while saving model.")
+            saved = False
+
+        if saved = True:
+            print("Saved the model!")

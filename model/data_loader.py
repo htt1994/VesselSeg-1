@@ -40,7 +40,7 @@ def loadData(folder, multiplier=1): #TOTAL NUMBER OF DATA PER EPOCH = Multiplier
     for seg in os.listdir(folder+"/manual"):
         if seg.endswith(".png"):
             image = Image.open(folder+'/manual/'+seg)
-            np_seg = (np.array(image) == 0).astype('long') * 255
+            np_seg = np.array(image)# == 0).astype('long') * 255
             #np_seg = ((np.array(image) == 0) == 0).astype(long) * 255
             #np_seg = np.ones(np_seg.shape) - np_seg #TODO: remove
             labels.append(torch.tensor(img_to_bitmap(np_seg)))
