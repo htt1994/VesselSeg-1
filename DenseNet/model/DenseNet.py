@@ -31,7 +31,7 @@ class BottleneckBlock(nn.Module):
     After l layers, with growth rate k, this gives channel dims:
     (lxk) -> Bn,ReLU,Conv(1) -> (bn_sizexk) - > Bn,ReLU,Conv(3) -> (k)
     '''
-    def __init__(self, channels, out_channels, growth_rate, bn_size=4, dropRate=0.0):
+    def __init__(self, channels, out_channels, growth_rate=8, bn_size=4, dropRate=0.0):
         super(BottleneckBlock, self).__init__()
         inter_channels = bn_size * growth_rate # number of intermediary channels in bottleneck
 
@@ -252,7 +252,8 @@ class DensePBR(nn.Module):
     - Classification branch is a sequence of spatial pyramid pooling, yields fixed output size which is passed into FCs for disease classification.
 
     '''
-    def __init__(self, denseNetLayers=[4,4,4,4], hidden_cls=144, hidden_seg=64, num_classes=2, spp_layers=[1,2,4], segment=True, classify = False, dropRate=0.0):
+    def __init__(self, denseNetLayers=[4,4,4,4], hidden_cls=144, hidden_seg=64, num_classes=2, spp_layers=[1,2,4], segment=True, classify = False,
+                dropRate=0.0, growth_rate=8):
         super(DensePBR, self).__init__()
         self.seg = segment
         self.cls = classify
@@ -262,7 +263,7 @@ class DensePBR(nn.Module):
         self.prob_out = True
 
         # DenseNet
-        self.conv = DenseNet(layers=denseNetLayers, dropRate=dropRate)
+        self.conv = DenseNet(layers=denseNetLayers, dropRate=dropRate, growth_rate=8)
         self.channels = self.conv.condense_ch_final # retrieve channel dim from DenseNet class
         # Segment Branch
         self.segment = SegmentBranch(f=self.channels, hidden_seg=hidden_seg)
