@@ -8,13 +8,29 @@ from distutils.version import LooseVersion
 # Numerical libs
 import torch
 import torch.nn as nn
+import torch.utils.data as data
 # Our libs
 from dataset import TrainDataset
 from models import ModelBuilder, SegmentationModule
 from utils import AverageMeter, parse_devices
 from lib.nn import UserScatteredDataParallel, user_scattered_collate, patch_replication_callback
 import lib.utils.data as torchdata
+import dataloader as dl
 
+
+### DATA AUGMENTATION FUNCTIONS
+def brightness_change(img_arr, factor):
+    return torch.clamp(torch.mul(img_arr, factor), 0.0, 1.0)
+
+def contrast_change(img_arr, factor):
+    return torch.clamp(0.5 + torch.mul((img_arr-0.5), factor), 0.0, 1.0)
+
+def random_contrast_brightness(img_arr):
+    #DRAW FROM A NORMAL DISTRIBUTION THE CHANGE FACTORS
+    c_factor = np.random.normal(1, 0.15)
+    b_factor = np.random.normal(1, 0.2)
+    img = contrast_change(brightness_change(img_arr, b_factor), c_factor)
+    return img #img.cuda() if torch.cuda.is_available() else img
 
 # train one epoch
 def train(segmentation_module, iterator, optimizers, history, epoch, args):
@@ -29,6 +45,10 @@ def train(segmentation_module, iterator, optimizers, history, epoch, args):
     tic = time.time()
     for i in range(args.epoch_iters):
         batch_data = next(iterator)
+
+        for i in batch_data: #Randomly change brightness and contrast at runtime.
+            i = random_contrast_brightness(i)
+
         data_time.update(time.time() - tic)
 
         segmentation_module.zero_grad()
@@ -153,7 +173,8 @@ def main(args):
         num_class=args.num_class,
         weights=args.weights_decoder)
 
-    crit = nn.NLLLoss(ignore_index=-1)
+    #crit = nn.NLLLoss(ignore_index=-1)
+    crit = nn.BCELossWithLogits(pos_weight=torch.tensor([10]))
 
     if args.arch_decoder.endswith('deepsup'):
         segmentation_module = SegmentationModule(
@@ -163,16 +184,16 @@ def main(args):
             net_encoder, net_decoder, crit)
 
     # Dataset and Loader
-    dataset_train = TrainDataset(
-        args.list_train, args, batch_per_gpu=args.batch_size_per_gpu)
+    #dataset_train = TrainDataset(
+    #    args.list_train, args, batch_per_gpu=args.batch_size_per_gpu)
 
-    loader_train = torchdata.DataLoader(
-        dataset_train,
+    train_set = dl.loadTrain()
+
+    loader_train = data.DataLoader(
+        train_set,
         batch_size=len(args.gpus),  # we have modified data_parallel
-        shuffle=False,  # we do not use this param
-        collate_fn=user_scattered_collate,
+        shuffle=True,  # we do not use this param
         num_workers=int(args.workers),
-        drop_last=True,
         pin_memory=True)
 
     print('1 Epoch = {} iters'.format(args.epoch_iters))
@@ -233,15 +254,15 @@ if __name__ == '__main__':
                         default='./data/')
 
     # optimization related arguments
-    parser.add_argument('--gpus', default='0-3',
+    parser.add_argument('--gpus', default='0',
                         help='gpus to use, e.g. 0-3 or 0,1,2,3')
     parser.add_argument('--batch_size_per_gpu', default=2, type=int,
                         help='input batch size')
-    parser.add_argument('--num_epoch', default=20, type=int,
+    parser.add_argument('--num_epoch', default=2000, type=int,
                         help='epochs to train for')
     parser.add_argument('--start_epoch', default=1, type=int,
                         help='epoch to start training. useful if continue from a checkpoint')
-    parser.add_argument('--epoch_iters', default=5000, type=int,
+    parser.add_argument('--epoch_iters', default=10, type=int,
                         help='iterations of each epoch (irrelevant to batch size)')
     parser.add_argument('--optim', default='SGD', help='optimizer')
     parser.add_argument('--lr_encoder', default=2e-2, type=float, help='LR')
@@ -258,14 +279,14 @@ if __name__ == '__main__':
                         help='fix bn params')
 
     # Data related arguments
-    parser.add_argument('--num_class', default=150, type=int,
+    parser.add_argument('--num_class', default=1, type=int,
                         help='number of classes')
-    parser.add_argument('--workers', default=16, type=int,
+    parser.add_argument('--workers', default=1, type=int,
                         help='number of data loading workers')
-    parser.add_argument('--imgSize', default=[300, 375, 450, 525, 600],
+    parser.add_argument('--imgSize', default=605,
                         nargs='+', type=int,
                         help='input image size of short edge (int or list)')
-    parser.add_argument('--imgMaxSize', default=1000, type=int,
+    parser.add_argument('--imgMaxSize', default=700, type=int,
                         help='maximum input image size of long edge')
     parser.add_argument('--padding_constant', default=8, type=int,
                         help='maxmimum downsampling rate of the network')

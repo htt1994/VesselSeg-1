@@ -16,6 +16,7 @@ from lib.utils import as_numpy
 import lib.utils.data as torchdata
 import cv2
 from tqdm import tqdm
+import dataloader as dl
 
 colors = loadmat('data/color150.mat')['colors']
 
@@ -92,20 +93,20 @@ def main(args):
     segmentation_module = SegmentationModule(net_encoder, net_decoder, crit)
 
     # Dataset and Loader
-    if len(args.test_imgs) == 1 and os.path.isdir(args.test_imgs[0]):
-        test_imgs = find_recursive(args.test_imgs[0])
-    else:
-        test_imgs = args.test_imgs
-    list_test = [{'fpath_img': x} for x in test_imgs]
-    dataset_test = TestDataset(
-        list_test, args, max_sample=args.num_val)
+    #if len(args.test_imgs) == 1 and os.path.isdir(args.test_imgs[0]):
+    #    test_imgs = find_recursive(args.test_imgs[0])
+    #else:
+    #    test_imgs = args.test_imgs
+    #list_test = [{'fpath_img': x} for x in test_imgs]
+    #dataset_test = TestDataset(
+    #    list_test, args, max_sample=args.num_val)
+    test_set = dl.loadTest()
     loader_test = torchdata.DataLoader(
-        dataset_test,
+        test_set,
         batch_size=args.batch_size,
         shuffle=False,
-        collate_fn=user_scattered_collate,
-        num_workers=5,
-        drop_last=True)
+        num_workers=1,
+        drop_last=False)
 
     segmentation_module.cuda()
 
@@ -139,15 +140,15 @@ if __name__ == '__main__':
     # Data related arguments
     parser.add_argument('--num_val', default=-1, type=int,
                         help='number of images to evalutate')
-    parser.add_argument('--num_class', default=150, type=int,
+    parser.add_argument('--num_class', default=1, type=int,
                         help='number of classes')
     parser.add_argument('--batch_size', default=1, type=int,
                         help='batchsize. current only supports 1')
-    parser.add_argument('--imgSize', default=[300, 400, 500, 600],
+    parser.add_argument('--imgSize', default=605,
                         nargs='+', type=int,
                         help='list of input image sizes.'
                              'for multiscale testing, e.g. 300 400 500')
-    parser.add_argument('--imgMaxSize', default=1000, type=int,
+    parser.add_argument('--imgMaxSize', default=700, type=int,
                         help='maximum input image size of long edge')
     parser.add_argument('--padding_constant', default=8, type=int,
                         help='maxmimum downsampling rate of the network')
