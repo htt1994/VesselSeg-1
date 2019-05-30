@@ -10,13 +10,13 @@ import torch
 import torch.nn as nn
 import torch.utils.data as data
 # Our libs
-from dataset import TrainDataset
 from models import ModelBuilder, SegmentationModule
 from utils import AverageMeter, parse_devices
 from lib.nn import UserScatteredDataParallel, user_scattered_collate, patch_replication_callback
 import lib.utils.data as torchdata
 import dataloader as dl
 
+import numpy as np
 
 ### DATA AUGMENTATION FUNCTIONS
 def brightness_change(img_arr, factor):
@@ -46,13 +46,15 @@ def train(segmentation_module, iterator, optimizers, history, epoch, args):
     for i in range(args.epoch_iters):
         batch_data = next(iterator)
 
-        for i in batch_data: #Randomly change brightness and contrast at runtime.
-            i = random_contrast_brightness(i)
+        for k in batch_data.keys():
+            batch_data[k] = batch_data[k].cuda()
+            #print(batch_data[k].shape)
+        #for i in batch_data: #Randomly change brightness and contrast at runtime.
+        #    i = random_contrast_brightness(i)
 
         data_time.update(time.time() - tic)
 
         segmentation_module.zero_grad()
-
         # forward pass
         loss, acc = segmentation_module(batch_data)
         loss = loss.mean()
@@ -174,7 +176,8 @@ def main(args):
         weights=args.weights_decoder)
 
     #crit = nn.NLLLoss(ignore_index=-1)
-    crit = nn.BCELossWithLogits(pos_weight=torch.tensor([10]))
+    crit = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([10]))
+    #crit = nn.CrossEntropyLoss()
 
     if args.arch_decoder.endswith('deepsup'):
         segmentation_module = SegmentationModule(
@@ -188,12 +191,12 @@ def main(args):
     #    args.list_train, args, batch_per_gpu=args.batch_size_per_gpu)
 
     train_set = dl.loadTrain()
-
     loader_train = data.DataLoader(
         train_set,
-        batch_size=len(args.gpus),  # we have modified data_parallel
+        batch_size=2,  # we have modified data_parallel
         shuffle=True,  # we do not use this param
-        num_workers=int(args.workers),
+        num_workers=1,#int(args.workers),
+        drop_last=True,
         pin_memory=True)
 
     print('1 Epoch = {} iters'.format(args.epoch_iters))

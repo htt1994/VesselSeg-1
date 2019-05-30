@@ -6,8 +6,8 @@ from PIL import Image
 import glob
 
 torch.set_printoptions(edgeitems=350)
-path = "/Users/Jesse/Desktop/DenseNetPBR/data/DRIVE700x605/"
-
+#path = "/Users/Jesse/Desktop/DenseNetPBR/data/DRIVE700x605/"
+path = "/home/jessesun/Desktop/DenseNetPBR/data/DRIVE700x605/"
 class RetinaSeg(Dataset):
     def __init__(self, img_path, seg_path):
         self.img_path = img_path
@@ -18,11 +18,16 @@ class RetinaSeg(Dataset):
         img = Image.open(self.img_path[index])
         mask = Image.open(self.seg_path[index])
 
-        tensor_img = self.to_tensor(img) # RGB
-        tensor_mask = self.to_tensor(img) # RGB
-        print(tensor_img)
-        return tensor_img, tensor_mask
-        #return img, mask
+        tensor_img = np.array(img) / 255.0 # RGB
+        tensor_mask = np.array(mask) / 255.0 # RGB
+
+        output = dict()
+        output['img_data'] = torch.from_numpy(tensor_img).float().permute(2, 0, 1)
+        output['seg_label'] = torch.from_numpy(tensor_mask).long().unsqueeze(0)
+
+        print(output['img_data'].shape)
+        #return tensor_img, tensor_mask
+        return output
 
     def __len__(self):
         return len(self.img_path)

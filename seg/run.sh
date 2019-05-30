@@ -19,12 +19,4 @@ if [ ! -e $DECODER ]; then
 fi
 
 
-python3 -u train.py \
-  --gpus 0
-  --model_path $MODEL_PATH \
-  --arch_encoder resnet50dilated \
-  --arch_decoder ppm_deepsup \
-  --fc_dim 2048 \
-  --result $RESULT_PATH
-
-python3 -u
+python3 -u train.py
