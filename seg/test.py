@@ -8,6 +8,7 @@ import torch
 import torch.nn as nn
 from scipy.io import loadmat
 # Our libs
+from dataset import TestDataset
 from models import ModelBuilder, SegmentationModule
 from utils import colorEncode, find_recursive
 from lib.nn import user_scattered_collate, async_copy_to
@@ -92,13 +93,15 @@ def main(args):
     segmentation_module = SegmentationModule(net_encoder, net_decoder, crit)
 
     # Dataset and Loader
-    #if len(args.test_imgs) == 1 and os.path.isdir(args.test_imgs[0]):
-    #    test_imgs = find_recursive(args.test_imgs[0])
-    #else:
-    #    test_imgs = args.test_imgs
-    #list_test = [{'fpath_img': x} for x in test_imgs]
-    #dataset_test = TestDataset(
-    #    list_test, args, max_sample=args.num_val)
+    if len(args.test_imgs) == 1 and os.path.isdir(args.test_imgs[0]):
+        test_imgs = find_recursive(args.test_imgs[0])
+    else:
+        test_imgs = args.test_imgs
+    list_test = [{'fpath_img': x} for x in test_imgs]
+    dataset_test = TestDataset(
+        list_test, args, max_sample=args.num_val)
+
+    '''
     test_set = dl.loadTest()
     loader_test = torchdata.DataLoader(
         test_set,
@@ -106,6 +109,7 @@ def main(args):
         shuffle=False,
         num_workers=1,
         drop_last=False)
+    '''
 
     segmentation_module.cuda()
 

@@ -6,8 +6,8 @@ from PIL import Image
 import glob
 
 torch.set_printoptions(edgeitems=350)
-#path = "/Users/Jesse/Desktop/DenseNetPBR/data/DRIVE700x605/"
-path = "/home/jessesun/Desktop/DenseNetPBR/data/DRIVE700x605/"
+path = "/Users/Jesse/Desktop/DenseNetPBR/data/DRIVE700x605/"
+#path = "/home/jessesun/Desktop/DenseNetPBR/data/DRIVE700x605/"
 class RetinaSeg(Dataset):
     def __init__(self, img_path, seg_path):
         self.img_path = img_path
@@ -25,7 +25,7 @@ class RetinaSeg(Dataset):
         output['img_data'] = torch.from_numpy(tensor_img).float().permute(2, 0, 1)
         output['seg_label'] = torch.from_numpy(tensor_mask).long().unsqueeze(0)
 
-        print(output['img_data'].shape)
+        print(output['seg_label'].shape)
         #return tensor_img, tensor_mask
         return output
 
@@ -46,3 +46,5 @@ def loadTest(dataPath=path):
     img_path = glob.glob(dataPath+"test/*.png")
     seg_path = glob.glob(dataPath+"test/manual/*.png")
     return RetinaSeg(img_path, seg_path)
+
+loadTrain()[0]

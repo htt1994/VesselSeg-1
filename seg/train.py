@@ -10,6 +10,7 @@ import torch
 import torch.nn as nn
 import torch.utils.data as data
 # Our libs
+from dataset import TrainDataset
 from models import ModelBuilder, SegmentationModule
 from utils import AverageMeter, parse_devices
 from lib.nn import UserScatteredDataParallel, user_scattered_collate, patch_replication_callback
@@ -46,9 +47,10 @@ def train(segmentation_module, iterator, optimizers, history, epoch, args):
     for i in range(args.epoch_iters):
         batch_data = next(iterator)
 
-        for k in batch_data.keys():
-            batch_data[k] = batch_data[k].cuda()
-            #print(batch_data[k].shape)
+        if torch.cuda.is_available():
+            for k in batch_data.keys():
+                batch_data[k] = batch_data[k].cuda()
+                #print(batch_data[k].shape)
         #for i in batch_data: #Randomly change brightness and contrast at runtime.
         #    i = random_contrast_brightness(i)
 
@@ -187,17 +189,19 @@ def main(args):
             net_encoder, net_decoder, crit)
 
     # Dataset and Loader
-    #dataset_train = TrainDataset(
-    #    args.list_train, args, batch_per_gpu=args.batch_size_per_gpu)
+    dataset_train = TrainDataset(
+        args.list_train, args, batch_per_gpu=args.batch_size_per_gpu)
 
+    '''
     train_set = dl.loadTrain()
     loader_train = data.DataLoader(
         train_set,
         batch_size=2,  # we have modified data_parallel
         shuffle=True,  # we do not use this param
-        num_workers=1,#int(args.workers),
-        drop_last=True,
+        num_workers=1, # int(args.workers),
+        drop_last=False,
         pin_memory=True)
+    '''
 
     print('1 Epoch = {} iters'.format(args.epoch_iters))
 
@@ -241,7 +245,7 @@ if __name__ == '__main__':
                         help="architecture of net_encoder")
     parser.add_argument('--arch_decoder', default='ppm_deepsup',
                         help="architecture of net_decoder")
-    parser.add_argument('--weights_encoder', default='',
+    parser.add_argument('--weights_encoder', default='./pretrained/resnet50-imagenet.pth',
                         help="weights to finetune net_encoder")
     parser.add_argument('--weights_decoder', default='',
                         help="weights to finetune net_decoder")

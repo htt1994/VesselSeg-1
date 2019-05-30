@@ -9,6 +9,7 @@ import torch
 import torch.nn as nn
 from scipy.io import loadmat
 # Our libs
+from dataset import ValDataset
 from models import ModelBuilder, SegmentationModule
 from utils import AverageMeter, colorEncode, accuracy, intersectionAndUnion
 from lib.nn import user_scattered_collate, async_copy_to
@@ -121,7 +122,7 @@ def main(args):
     crit = nn.NLLLoss(ignore_index=-1)
 
     segmentation_module = SegmentationModule(net_encoder, net_decoder, crit)
-
+    '''
     # Dataset and Loader
     dataset_val = dl.loadVal()
 
@@ -130,6 +131,19 @@ def main(args):
         batch_size=5,
         shuffle=False,
         num_workers=1,
+        drop_last=True)
+    '''
+
+    # Dataset and Loader
+    dataset_val = ValDataset(
+        args.list_val, args, max_sample=args.num_val)
+
+    loader_val = torchdata.DataLoader(
+        dataset_val,
+        batch_size=args.batch_size,
+        shuffle=False,
+        collate_fn=user_scattered_collate,
+        num_workers=5,
         drop_last=True)
 
     segmentation_module.cuda()
