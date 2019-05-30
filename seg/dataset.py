@@ -5,7 +5,7 @@ import lib.utils.data as torchdata
 import cv2
 from torchvision import transforms
 import numpy as np
-
+from PIL import Image
 
 class BaseDataset(torchdata.Dataset):
     def __init__(self, odgt, opt, **kwargs):
@@ -134,10 +134,17 @@ class TrainDataset(BaseDataset):
             this_record = batch_records[i]
 
             # load image and label
-            image_path = os.path.join(self.root_dataset, this_record['fpath_img'])
-            segm_path = os.path.join(self.root_dataset, this_record['fpath_segm'])
+            image_path = this_record['fpath_img']
+            segm_path = this_record['fpath_segm']
             img = cv2.imread(image_path, cv2.IMREAD_COLOR)
             segm = cv2.imread(segm_path, cv2.IMREAD_GRAYSCALE)
+            
+            '''
+            cv2.imshow("img", img)
+            cv2.imshow("seg", segm)
+            cv2.waitKey(0)
+            cv2.destroyAllWindows()
+            '''
 
             assert(img.ndim == 3)
             assert(segm.ndim == 2)
@@ -175,7 +182,7 @@ class TrainDataset(BaseDataset):
         batch_segms = batch_segms - 1 # label from -1 to 149
         output = dict()
         output['img_data'] = batch_images
-        output['seg_label'] = batch_segms
+        output['seg_label'] = batch_segms.unsqueeze(1).float()
         return output
 
     def __len__(self):

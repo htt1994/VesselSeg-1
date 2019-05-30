@@ -18,17 +18,17 @@ import lib.utils.data as torchdata
 import cv2
 from tqdm import tqdm
 
-colors = loadmat('data/color150.mat')['colors']
+#colors = loadmat('data/color150.mat')['colors']
 
 
 def visualize_result(data, pred, args):
     (img, seg, info) = data
 
     # segmentation
-    seg_color = colorEncode(seg, colors)
+    seg_color = colorEncode(seg, [1,3])
 
     # prediction
-    pred_color = colorEncode(pred, colors)
+    pred_color = colorEncode(pred, [1,3])
 
     # aggregate images and save
     im_vis = np.concatenate((img, seg_color, pred_color),

@@ -48,8 +48,9 @@ def train(segmentation_module, iterator, optimizers, history, epoch, args):
         batch_data = next(iterator)
 
         if torch.cuda.is_available():
-            for k in batch_data.keys():
-                batch_data[k] = batch_data[k].cuda()
+            for item in batch_data:
+                for k in item.keys():
+                    item[k] = item[k].cuda()
                 #print(batch_data[k].shape)
         #for i in batch_data: #Randomly change brightness and contrast at runtime.
         #    i = random_contrast_brightness(i)
@@ -58,7 +59,7 @@ def train(segmentation_module, iterator, optimizers, history, epoch, args):
 
         segmentation_module.zero_grad()
         # forward pass
-        loss, acc = segmentation_module(batch_data)
+        loss, acc = segmentation_module(batch_data[0])
         loss = loss.mean()
         acc = acc.mean()
 
@@ -178,7 +179,7 @@ def main(args):
         weights=args.weights_decoder)
 
     #crit = nn.NLLLoss(ignore_index=-1)
-    crit = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([10]))
+    crit = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([10.0]))
     #crit = nn.CrossEntropyLoss()
 
     if args.arch_decoder.endswith('deepsup'):
@@ -194,20 +195,22 @@ def main(args):
 
     '''
     train_set = dl.loadTrain()
-    loader_train = data.DataLoader(
-        train_set,
-        batch_size=2,  # we have modified data_parallel
-        shuffle=True,  # we do not use this param
-        num_workers=1, # int(args.workers),
-        drop_last=False,
-        pin_memory=True)
     '''
-
+    loader_train = data.DataLoader(
+        dataset_train,
+        batch_size=len(args.gpus),  # we have modified data_parallel
+        collate_fn=user_scattered_collate,
+        shuffle=False,  # we do not use this param
+        num_workers=1, # int(args.workers),
+        drop_last=True,
+        pin_memory=True)
+    
+    
     print('1 Epoch = {} iters'.format(args.epoch_iters))
-
+    
     # create loader iterator
     iterator_train = iter(loader_train)
-
+    
     # load nets into gpu
     if len(args.gpus) > 1:
         segmentation_module = UserScatteredDataParallel(
@@ -265,11 +268,11 @@ if __name__ == '__main__':
                         help='gpus to use, e.g. 0-3 or 0,1,2,3')
     parser.add_argument('--batch_size_per_gpu', default=2, type=int,
                         help='input batch size')
-    parser.add_argument('--num_epoch', default=2000, type=int,
+    parser.add_argument('--num_epoch', default=20, type=int,
                         help='epochs to train for')
     parser.add_argument('--start_epoch', default=1, type=int,
                         help='epoch to start training. useful if continue from a checkpoint')
-    parser.add_argument('--epoch_iters', default=10, type=int,
+    parser.add_argument('--epoch_iters', default=5000, type=int,
                         help='iterations of each epoch (irrelevant to batch size)')
     parser.add_argument('--optim', default='SGD', help='optimizer')
     parser.add_argument('--lr_encoder', default=2e-2, type=float, help='LR')
@@ -342,6 +345,8 @@ if __name__ == '__main__':
     if args.fix_bn:
         args.id += '-fixBN'
     print('Model ID: {}'.format(args.id))
+
+    args.weights_encoder = '/home/jessesun/Desktop/DenseNetPBR/seg/pretrained/resnet50-imagenet.pth'
 
     args.ckpt = os.path.join(args.ckpt, args.id)
     if not os.path.isdir(args.ckpt):

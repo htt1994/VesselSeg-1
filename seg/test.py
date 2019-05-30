@@ -18,14 +18,12 @@ import cv2
 from tqdm import tqdm
 import dataloader as dl
 
-colors = loadmat('data/color150.mat')['colors']
-
 
 def visualize_result(data, pred, args):
     (img, info) = data
 
     # prediction
-    pred_color = colorEncode(pred, colors).astype(np.uint8)
+    pred_color = colorEncode(pred, [1, 3]).astype(np.uint8)
 
     # aggregate images and save
     im_vis = np.concatenate((img, pred_color), axis=1)

@@ -46,5 +46,3 @@ def loadTest(dataPath=path):
     img_path = glob.glob(dataPath+"test/*.png")
     seg_path = glob.glob(dataPath+"test/manual/*.png")
     return RetinaSeg(img_path, seg_path)
-
-loadTrain()[0]
