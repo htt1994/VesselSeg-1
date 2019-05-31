@@ -178,9 +178,10 @@ def main(args):
         num_class=args.num_class,
         weights=args.weights_decoder)
 
-    #crit = nn.NLLLoss(ignore_index=-1)
+    #crit = nn.NLLLoss()
     crit = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([10.0]))
     #crit = nn.CrossEntropyLoss()
+    #crit = nn.BCELoss()
 
     if args.arch_decoder.endswith('deepsup'):
         segmentation_module = SegmentationModule(

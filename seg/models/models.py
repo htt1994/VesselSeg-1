@@ -9,14 +9,17 @@ class SegmentationModuleBase(nn.Module):
     def __init__(self):
         super(SegmentationModuleBase, self).__init__()
 
-    def pixel_acc(self, pred, label):
-        _, preds = torch.max(pred, dim=1)
-        valid = (label >= 0).long()
-        acc_sum = torch.sum(valid * (preds == label).long())
+    def pixel_acc(self, pred, label): #ONLY CONSIDERS PIXELS PREDICTED TRUE POSITIVE. DOES NOT PENALIZE FALSE POSITIVE.
+        valid = (label > 0).long()
+        acc_sum = torch.sum(valid * (pred == label).long())
         pixel_sum = torch.sum(valid)
         acc = acc_sum.float() / (pixel_sum.float() + 1e-10)
         return acc
 
+    def jaccard(self, pred, label): #ACCURACY THAT TAKES INTO ACCOUNT BOTH TP AND FP.
+        valid = (label > 0).long() #FILTERS OUT ALL 0's SINCE 0's ARE NOT APART OF INTERSECTION, ONLY 1's.
+        AnB = torch.sum(valid * (pred == label).long()) #INTERSECTION ONLY CONSIDERS MATCHING 1s, thats why * valid (elements not 0)
+        return AnB/(pred.view(-1).sum().float() + label.view(-1).sum().float() - AnB)
 
 class SegmentationModule(SegmentationModuleBase):
     def __init__(self, net_enc, net_dec, crit, deep_sup_scale=None):
@@ -29,17 +32,20 @@ class SegmentationModule(SegmentationModuleBase):
     def forward(self, feed_dict, *, segSize=None):
         # training
         if segSize is None:
+            encoding = self.encoder(feed_dict['img_data'], return_feature_maps=True)
             if self.deep_sup_scale is not None: # use deep supervision technique
-                (pred, pred_deepsup) = self.decoder(self.encoder(feed_dict['img_data'], return_feature_maps=True))
+                (pred, pred_deepsup) = self.decoder(encoding)
             else:
-                pred = self.decoder(self.encoder(feed_dict['img_data'], return_feature_maps=True))
-
-            loss = self.crit(pred, feed_dict['seg_label'])
+                pred = self.decoder(encoding)
+            #print(torch.sigmoid(pred))
+            #print(pred.shape)
+            #print(feed_dict['seg_label'].long())
+            loss = self.crit(pred, feed_dict['seg_label'])#.long())
             if self.deep_sup_scale is not None:
                 loss_deepsup = self.crit(pred_deepsup, feed_dict['seg_label'])
                 loss = loss + loss_deepsup * self.deep_sup_scale
 
-            acc = self.pixel_acc(pred, feed_dict['seg_label'].long())
+            acc = self.jaccard(torch.round(torch.sigmoid(pred)).long(), feed_dict['seg_label'].long())
             return loss, acc
         # inference
         else:
@@ -119,7 +125,7 @@ class ModelBuilder():
         return net_encoder
 
     def build_decoder(self, arch='ppm_deepsup',
-                      fc_dim=512, num_class=150,
+                      fc_dim=512, num_class=1,
                       weights='', use_softmax=False):
         arch = arch.lower()
         if arch == 'c1_deepsup':
@@ -445,7 +451,7 @@ class PPMDeepsup(nn.Module):
                 nn.AdaptiveAvgPool2d(scale),
                 nn.Conv2d(fc_dim, 512, kernel_size=1, bias=False),
                 SynchronizedBatchNorm2d(512),
-                nn.ReLU(inplace=True)
+                #nn.LeakyReLU(inplace=True)
             ))
         self.ppm = nn.ModuleList(self.ppm)
         self.cbr_deepsup = conv3x3_bn_relu(fc_dim // 2, fc_dim // 4, 1)
@@ -454,7 +460,7 @@ class PPMDeepsup(nn.Module):
             nn.Conv2d(fc_dim+len(pool_scales)*512, 512,
                       kernel_size=3, padding=1, bias=False),
             SynchronizedBatchNorm2d(512),
-            nn.ReLU(inplace=True),
+            #nn.LeakyReLU(inplace=True),
             nn.Dropout2d(0.1),
             nn.Conv2d(512, num_class, kernel_size=1)
         )
@@ -487,8 +493,8 @@ class PPMDeepsup(nn.Module):
         _ = self.dropout_deepsup(_)
         _ = self.conv_last_deepsup(_)
 
-        x = nn.functional.log_softmax(x, dim=1)
-        _ = nn.functional.log_softmax(_, dim=1)
+        #x = nn.functional.log_softmax(x, dim=1)
+        #_ = nn.functional.log_softmax(_, dim=1)
 
         return (x, _)
 

@@ -179,10 +179,10 @@ class TrainDataset(BaseDataset):
             batch_images[i][:, :img.shape[1], :img.shape[2]] = img
             batch_segms[i][:segm.shape[0], :segm.shape[1]] = torch.from_numpy(segm.astype(np.int)).long()
 
-        batch_segms = batch_segms - 1 # label from -1 to 149
+        batch_segms = batch_segms/255 # label from -1 to 0
         output = dict()
         output['img_data'] = batch_images
-        output['seg_label'] = batch_segms.unsqueeze(1).float()
+        output['seg_label'] = batch_segms.unsqueeze(1).float() 
         return output
 
     def __len__(self):
