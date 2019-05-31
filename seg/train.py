@@ -204,13 +204,13 @@ def main(args):
         num_workers=1, # int(args.workers),
         drop_last=True,
         pin_memory=True)
-    
-    
+
+
     print('1 Epoch = {} iters'.format(args.epoch_iters))
-    
+
     # create loader iterator
     iterator_train = iter(loader_train)
-    
+
     # load nets into gpu
     if len(args.gpus) > 1:
         segmentation_module = UserScatteredDataParallel(
@@ -346,7 +346,8 @@ if __name__ == '__main__':
         args.id += '-fixBN'
     print('Model ID: {}'.format(args.id))
 
-    args.weights_encoder = '/home/jessesun/Desktop/DenseNetPBR/seg/pretrained/resnet50-imagenet.pth'
+    # FIRST TIME WE TRAINING IT, LOAD THE PRETRAINED WEIGHTS OF ENCODER FROM IMAGENET.
+    args.weights_encoder = '/home/jessesun/Desktop/DenseNetPBR/seg/encoder_epoch_20.pth'
 
     args.ckpt = os.path.join(args.ckpt, args.id)
     if not os.path.isdir(args.ckpt):
