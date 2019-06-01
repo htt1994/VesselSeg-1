@@ -17,8 +17,7 @@ class SegmentationModuleBase(nn.Module):
         return acc
 
     def jaccard(self, pred, label): #ACCURACY THAT TAKES INTO ACCOUNT BOTH TP AND FP.
-        valid = (label > 0).long() #FILTERS OUT ALL 0's SINCE 0's ARE NOT APART OF INTERSECTION, ONLY 1's.
-        AnB = torch.sum(valid * (pred == label).long()) #INTERSECTION ONLY CONSIDERS MATCHING 1s, thats why * valid (elements not 0)
+        AnB = torch.sum(pred.long() & label) #TAKE THE AND
         return AnB/(pred.view(-1).sum().float() + label.view(-1).sum().float() - AnB)
 
 class SegmentationModule(SegmentationModuleBase):
